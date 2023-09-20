@@ -22,7 +22,7 @@
 //based on Quartus
 int getMinM(int N) 
 {
-	switch(N)
+	switch(N) // + 6
 	{
 		case 1: return 7;
 		case 2: return 13;
@@ -39,18 +39,7 @@ int getMinM(int N)
 //based on Quartus
 int getMaxM(int N) 
 {
-	switch(N)
-	{
-		case 1: return 32;
-		case 2: return 64;
-		case 3: return 96;
-		case 4: return 128;
-		case 5: return 160;
-		case 6: return 192;
-		case 7: return 224;
-		case 8: return 256;
-	}
-	return 0;		
+	return N << 5 ;	//mult x32
 }
 
 //based on Quartus (not validate min or max here)
@@ -114,7 +103,7 @@ int getMinC(double const px, int N)
 }
 
 int getMaxC(double const px, int N) 
-{
+{	
 	int max_clock = (int) getMaxClock(N);
 	int C = 0;	
 	double clock = 0;	
@@ -136,7 +125,7 @@ double getMNC(double const px, int &M, int &N, int &C)
 	for (int n = MIN_N; n <= MAX_N; n++)	//Quartus based values
 	{
 		int c_min = getMinC(px, n);	
-		int c_max = getMaxC(px, n);
+		int c_max = getMaxC(px, n);		
 		for (int c = c_min; c <= c_max; c++)
 		{
 			double clock = c * px;
@@ -144,7 +133,7 @@ double getMNC(double const px, int &M, int &N, int &C)
 			double tmp_error = error;
 			double tmp_val;
 			int m_min = getMinM(n);
-			int m_max = getMaxM(n);				
+			int m_max = getMaxM(n);							
 			for (int m = m_min; m <= m_max; m++) 
 			{				
 				if (isValidM(m, n))
