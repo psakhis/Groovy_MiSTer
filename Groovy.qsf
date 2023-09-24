@@ -58,7 +58,7 @@ set_global_assignment -name SEED 1
 #set_global_assignment -name VERILOG_MACRO "MISTER_DUAL_SDRAM=1"
 
 #do not enable DEBUG_NOHDMI in release!
-#set_global_assignment -name VERILOG_MACRO "MISTER_DEBUG_NOHDMI=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DEBUG_NOHDMI=1"
 
 source sys/sys.tcl
 set_global_assignment -name FAMILY "Cyclone V"

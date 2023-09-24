@@ -2902,7 +2902,7 @@ void user_io_poll()
 	user_io_send_buttons(0);
 
 	if (is_minimig())
-	{
+	{		
 		//HDD & FDD query
 		unsigned char  c1, c2;
 		EnableFpga();
@@ -2935,7 +2935,7 @@ void user_io_poll()
 	}
 
 	if (core_type == CORE_TYPE_8BIT && !is_menu())
-	{
+	{		
 		check_status_change();
 	}
 
@@ -2944,7 +2944,7 @@ void user_io_poll()
 	{
 		x86_poll();
 	}
-	else if ((core_type == CORE_TYPE_8BIT) && !is_menu() && !is_minimig())
+	else if ((core_type == CORE_TYPE_8BIT) && !is_menu() && !is_minimig() && !is_groovy())
 	{
 		if (is_st()) tos_poll();
 		if (is_snes() || is_sgb()) snes_poll();
@@ -3203,7 +3203,7 @@ void user_io_poll()
 
 	static uint8_t leds = 0;
 
-	if (use_ps2ctl && !is_minimig() && !is_archie())
+	if (use_ps2ctl && !is_minimig() && !is_archie() && !is_groovy())
 	{
 		leds |= (KBD_LED_FLAG_STATUS | KBD_LED_CAPS_CONTROL);
 

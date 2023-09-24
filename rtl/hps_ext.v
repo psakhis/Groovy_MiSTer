@@ -22,8 +22,11 @@ module hps_ext
 (
 	input             clk_sys,
 	inout      [35:0] EXT_BUS,	
-	input             hps_rise,
-	input      [15:0] vga_vcount,
+	input             hps_rise,	
+	input      [1:0]  verbose,	
+	input      [1:0]  subframe_px,	
+	input      [15:0] vga_vcount,	
+	input      [15:0] vga_frame,	
    output reg        cmd_init = 0	
  );
 
@@ -33,11 +36,12 @@ assign EXT_BUS[32] = dout_en;
 wire io_strobe = EXT_BUS[33];
 wire io_enable = EXT_BUS[34];
 
-localparam EXT_CMD_MIN = GET_VCOUNT;
+localparam EXT_CMD_MIN = GET_GROOVY_STATUS;
 localparam EXT_CMD_MAX = SET_INIT;
 
-localparam GET_VCOUNT    = 'hf0;
-localparam SET_INIT      = 'hf1;
+localparam GET_GROOVY_STATUS = 'hf0;
+localparam GET_GROOVY_HPS    = 'hf1;
+localparam SET_INIT          = 'hf2;
 
 reg [15:0] io_dout;
 reg        dout_en = 0;
@@ -66,31 +70,24 @@ always@(posedge clk_sys) begin
 		if(byte_cnt == 0) begin
 			cmd <= io_din;
 			dout_en <= (io_din >= EXT_CMD_MIN && io_din <= EXT_CMD_MAX);
-			if(io_din == GET_VCOUNT) io_dout <= hps_rise_req; 		
-			if(io_din == SET_INIT) io_dout <= hps_rise_req; 		
+			if(io_din == GET_GROOVY_STATUS) io_dout <= hps_rise_req; 		
+			if(io_din == GET_GROOVY_HPS)    io_dout <= hps_rise_req; 		
+			if(io_din == SET_INIT)          io_dout <= hps_rise_req; 		
 		end else begin
 
 			case(cmd)
 
-				GET_VCOUNT: case(byte_cnt)
+				GET_GROOVY_STATUS: case(byte_cnt)
 				         1: io_dout <= vga_vcount;
-				//			1: io_dout <= {14'h00,vblank,vram_end_frame};
-				//			2: io_dout <= cd_in[31:16];
-				//			3: io_dout <= cd_in[47:32];
-				//			4: io_dout <= cd_in[63:48];
-				//			5: io_dout <= cd_in[79:64];
-				//			6: io_dout <= cd_in[95:80];
-				//			7: io_dout <= cd_in[111:96];
+							2: io_dout <= vga_frame;							
 						endcase
-									
+						
+				GET_GROOVY_HPS: case(byte_cnt)
+				         1: io_dout <= {4'd0,subframe_px,verbose};													
+						endcase					
+						
 				SET_INIT: case(byte_cnt)
-							1: cmd_init <= io_din[0];
-			//				2: cd_out[31:16] <= io_din;
-			//				3: cd_out[47:32] <= io_din;
-			//				4: cd_out[63:48] <= io_din;
-			//				5: cd_out[79:64] <= io_din;
-			//				6: cd_out[95:80] <= io_din;
-			//				7: cd_out[111:96] <= io_din;
+							1: cmd_init <= io_din[0];			
 						endcase 					
 			endcase
 		end
