@@ -207,10 +207,12 @@ localparam CONF_STR = {
    "P1-;",
    "P1O[20:17],Analog Video H-Pos,0,-1,-2,-3,-4,-5,-6,-7,8,7,6,5,4,3,2,1;",
    "P1O[24:21],Analog Video V-Pos,0,-1,-2,-3,-4,-5,-6,-7,8,7,6,5,4,3,2,1;",   
+	"P1-;",
+	"P1O[30],Auto Frameskip,Off,On;",
 	"-;",
 	"P2,Server Settings (restart);",
 	"P2O[26:25],Verbose,Off,1,2,3;",
-	"P2O[28:27],Subframe pixels update,Off,3000,6000,9000;",
+	"P2O[29:27],Blit at,ASAP,Line 16,Line 32,Line 64,Line 128,Line 192,End Line;",	
 	"-;",
 	"J1,Red;",
 	"jn,A;",
@@ -234,7 +236,8 @@ wire        crop_240p = allow_crop_240p & status[11];
 wire [4:0]  crop_offset = status[16:12] < 9 ? {status[16:12]} : ( status[16:12] + 5'd15 );
 
 wire [1:0]	hps_verbose = status[26:25];
-wire [1:0]	hps_subframe_px = status[28:27];
+wire [2:0]	hps_blit = status[29:27];
+wire      	hps_frameskip = status[30];
 
 wire [31:0] status;
 wire [31:0] joy;
@@ -262,18 +265,29 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 ////////////////////////////  HPS I/O  EXT ///////////////////////////////////
 
 wire [35:0] EXT_BUS;
-reg  cmd_init = 0, cmd_switchres = 0, cmd_blit = 0, cmd_get_status = 0;
+reg  reset_switchres = 0, cmd_get_status = 0, vga_frameskip = 0, reset_blit = 0;
+wire cmd_init, cmd_switchres, cmd_blit;
 
 hps_ext hps_ext
 (
 	.clk_sys(clk_sys),
 	.EXT_BUS(EXT_BUS),
 	.hps_rise(1'b1),	
-	.verbose(hps_verbose),
-	.subframe_px(hps_subframe_px),
+	.hps_verbose(hps_verbose),
+	.hps_blit(hps_blit),
+	.vga_frameskip(vga_frameskip),
 	.vga_vcount(vga_vcount), 
 	.vga_frame(vga_frame),
-	.cmd_init() // no use spi, better with ddr (we are not in main, can be interference with OSD)
+	.vga_vblank(vblank_core),
+	.vram_pixels(vram_pixels),
+	.vram_synced(vram_synced),
+	.vram_end_frame(vram_end_frame),
+	.vram_ready(vram_req_ready),
+	.cmd_init(cmd_init), 
+	.reset_switchres(reset_switchres),
+	.cmd_switchres(cmd_switchres),
+	.reset_blit(reset_blit),
+	.cmd_blit(cmd_blit)
 );
 
 /////////////////////////////////////////////////////////
@@ -437,7 +451,8 @@ reg [7:0] state     = 8'd0;
 reg [7:0] state_4   = 8'd0;           // testing joy btn A   
 
 // Header from arm
-reg [7:0]  PoC_frame_ddr       = 8'd0;
+reg [31:0] PoC_frame_ddr       = 32'd0;
+reg [7:0]  PoC_subframe_bl_ddr = 8'd0;
 reg [23:0] PoC_subframe_px_ddr = 24'd0;
 
 // Modeline from arm (default 256x240 sms)
@@ -460,10 +475,13 @@ reg [31:0] PoC_pll_F_K    = 32'd1182682725;
 reg [7:0]  PoC_ce_pix     = 8'd16;
 
 // Current frame on vram
-reg [7:0]  PoC_frame_vram = 8'd0;
+reg [31:0] PoC_frame_vram = 32'd0;
 
 // Pixels writed on current frame for subframe updates 
 reg [23:0] PoC_subframe_px_vram = 24'd0;
+reg [7:0]  PoC_subframe_bl_vram = 8'd0;
+
+reg [23:0] PoC_px_frameskip = 24'd0;
 
 // Main flow
 always @(posedge clk_sys) begin              	  		  		          	  		  		 		             	  		  		          	  		  		 		        		  	
@@ -492,40 +510,40 @@ always @(posedge clk_sys) begin
 				begin		
 				  {r_in, g_in, b_in}   <= {8'hd1,8'h96,8'h28};		// dark yellow, not cmd_init
 				  vga_reset            <= 1'b1;
-				  vga_keep_vblank      <= 1'b0;
+				  vga_soft_reset       <= 1'b0;
+				  vga_wait_vblank      <= 1'b0;
+				  vga_frameskip        <= 1'b0;
 				  vram_reset           <= 1'b1;	              
 				  vram_active          <= 1'b0;			  							 
 				  vram_sync_ddr        <= 1'b0;					 
 				  ddr_to_vram          <= 1'b0;				
-				  ddr_data_write       <= 1'b0;				  
-				  ddr_data_req         <= ddr_busy ? 1'b0 : 1'b1;					
+				  ddr_data_write       <= 1'b0;				  				 					
+				  ddr_data_req         <= 1'b0;					
 				  ddr_req_ch           <= 1'b0;					
 				  ddr_data_ch          <= 1'b0;	
 		        ddr_burst            <= 8'd1;		  
-              ddr_addr             <= 28'd0;	
-				  PoC_frame_ddr        <= 8'd0;                
-				  PoC_subframe_px_ddr  <= 24'd0;		
+              ddr_addr             <= 28'd0;					                
+				  PoC_subframe_bl_vram <= 8'd0;	 					 
 				  PoC_subframe_px_vram <= 24'd0;	 					 
-				  PoC_frame_vram       <= 8'd0;	
-				  cmd_switchres        <= 1'b0;
-				  cmd_blit             <= 1'b0;
-				  cmd_get_status       <= 1'b0;
-				  state                <= 8'd20;		                				 
+				  PoC_frame_vram       <= 32'd0;	
+				  PoC_frame_ddr		  <= 32'd0;	  
+				  cmd_get_status       <= 1'b0;				  	                				 
+				  if (cmd_init) state  <= 8'd1;				    
 				end		  
 				8'd1: // what to do? dispatcher
 				begin		 
               {r_in, g_in, b_in}   <= {8'h00,8'h00,8'h00};	              			 
-				  vga_reset            <= 1'b0;				        
+				  vga_reset            <= 1'b0;	              			 
 				  vram_reset           <= 1'b0;
 				  ddr_to_vram          <= 1'b0;				  
 				  ddr_data_write       <= 1'b0;
 				  ddr_data_req         <= 1'b0;	
 				  ddr_req_ch           <= 1'b0;					
 				  ddr_data_ch          <= 1'b0;	
-				  ddr_addr             <= 28'd0;	
+				  ddr_addr             <= 28'd0;			      		  
 				  vram_active          <= cmd_init ? 1'b1 : 1'b0;				  
               if (!cmd_init) begin 		
-                {r_in, g_in, b_in} <= {8'hd1,8'h96,8'h28};	   // dark yellow, not cmd_init			  
+                {r_in, g_in, b_in} <= {8'hd1,8'h96,8'h28};	   // dark yellow, not cmd_init			  					 
 				    state 				  <= 8'd0;
               end else					
 				  if (cmd_get_status) begin 							   //4x slower than spi
@@ -533,108 +551,141 @@ always @(posedge clk_sys) begin
 					 PoC_header[6 +:1]  <= 1'b0;					 
 				    state 				  <= 8'd60;
               end else					
-		        if (cmd_switchres & !ddr_busy) begin	// request modeline					  
-					 cmd_switchres  	  <= 1'b0;			  
+		        if (cmd_switchres & !ddr_busy) begin	// request modeline	
+                reset_switchres    <= 1'b1;				  
 				    ddr_data_req       <= 1'b1;
 					 ddr_addr           <= 28'd8; 
-					 ddr_burst          <= 8'd3;
-		          state 				  <= 8'd30;		  
-				  end else	 
-              if (cmd_blit & !ddr_busy) begin // request ch0 read framebuffer 					 
-				    cmd_blit     	     <= 1'b0;		
-			       ddr_addr           <= ddr_addr_next;				          		
-					 ddr_burst          <= 8'd15;				 
+					 ddr_burst          <= 8'd3;					
+		          state 				  <= 8'd30;		  						  
+				  end else	 				 
+              //if (!ddr_busy & ce_pix) begin // blit? request ch0 read framebuffer 					 				 				   
+				  if (cmd_blit && !ddr_busy) begin // blit? request ch0 read framebuffer 	
+                reset_blit         <= 1'b1;				  
+					 ddr_burst          <= 8'd1; 					 
 	             ddr_data_req       <= 1'b1;	                    				 				    
-		          state 				  <= 8'd40;					    
-			     end else 
-				  if (!ddr_busy & ce_pix) begin // pool header for new requests				    
-				    ddr_data_req       <= 1'b1;
-					 ddr_burst          <= 8'd1;
-                state              <= 8'd20;				  					 
-				  end 
-
+		          state              <= 8'd20;			   		  					 
+				  end else				  
+				  if (hps_frameskip && PoC_frame_vram > 0 && PoC_frame_ddr <= vga_frame) begin // frameskip?
+				    if (vga_vcount == 0 && PoC_subframe_px_vram == 0) begin // next frame not started to blit
+				      state 			  <= 8'd22;						    					 
+					 end else
+					 if (!vblank_core && vga_vcount + 1 <= PoC_V) begin
+					   PoC_px_frameskip <= PoC_H * (vga_vcount + 1); // next line is not blitted yet?
+						state 			  <= 8'd23;		
+					 end	
+				  end
 				end
 				
 				8'd20:  // header ready
-				begin		               
+				begin		  
+              reset_blit <= 1'b0;					
               if (ddr_data_ready) begin				              	
 				    vram_sync_ddr       <= (vram_active & !vram_synced) ? 1'b1 : PoC_subframe_px_vram == 0 ? 1'b0 : vram_sync_ddr;				
 					 PoC_header          <= ddr_data;
-				    PoC_frame_ddr       <= ddr_data[15:8];
-				    PoC_subframe_px_ddr <= ddr_data[39:16];	
+				    PoC_frame_ddr       <= ddr_data[31:0];
+					 PoC_subframe_px_ddr <= ddr_data[55:32];	
+					 PoC_subframe_bl_ddr <= ddr_data[63:56];					    
 				    ddr_data_req        <= 1'b0;	   			      					 					 
 				    state               <= 8'd21; 	
 				  end	 				
 				end 	
-				8'd21:  // actions on header
+				8'd21:  // get pixels to blit from header
 				begin		
-              cmd_init <= PoC_header[0 +:1];								 
-				  if (!PoC_header[1 +:1]) begin	
-				    if (PoC_header[6 +:1]) cmd_get_status <= 1'b1;				  
-				    else if (PoC_header[4 +:1] | PoC_header[5 +:1]) cmd_switchres <= 1'b1;				   	   	  // request change modeline/pll 
-					 else if (PoC_frame_ddr != PoC_frame_vram && PoC_subframe_px_ddr > PoC_subframe_px_vram) begin // ddr updated frame/subframe
-					 	     if (vram_sync_ddr && PoC_subframe_px_vram == 0) begin  // resync?
-						       vram_reset      <= 1'b1;
-								 vga_keep_vblank <= 1'b1;
-							    //vram_active <= 1'b0;
-							  end 									 
-		                 ddr_addr_next     <= PoC_subframe_px_vram == 0 ? 28'hff : ddr_addr_subf;							 
-							  cmd_blit          <= 1'b1;					  
-						   end 								   
-				  end 
-          	  state <= 8'd1;			
+				  state <= 8'd1;              				 
+				  if (PoC_frame_ddr > PoC_frame_vram && PoC_subframe_px_ddr > PoC_subframe_px_vram && PoC_subframe_bl_ddr > PoC_subframe_bl_vram) begin
+					 if (vram_sync_ddr && PoC_subframe_px_vram == 0) begin  // resync?
+					   vram_reset         <= 1'b1;
+					   vga_wait_vblank    <= 1'b1;							    
+					 end 									 		          
+					 vga_frameskip        <= 1'b0;
+					 ddr_addr_next        <= PoC_subframe_px_vram == 0 ? 28'hff : ddr_addr_subf;
+	             PoC_subframe_bl_vram <= PoC_subframe_bl_ddr;				 
+		          state                <= 8'd24;					  							  				
+				  end			
+				end 			
+			   8'd22:  // blit first line of the next frame with rgb of last
+				begin						  
+				  vga_frameskip        <= 1'b1;
+				  PoC_frame_ddr        <= vga_frame + 1;
+              ddr_addr_next        <= 28'hff;
+				  PoC_subframe_px_ddr  <= PoC_H;
+				  state                <= 8'd24;		     							  									  				  	 
+				end 					
+				8'd23:  // is next line blitted?
+				begin		
+				  if (PoC_px_frameskip > vram_pixels) begin 
+				    vga_frameskip        <= 1'b1;				    
+                ddr_addr_next        <= PoC_subframe_px_vram == 0 ? 28'hff : ddr_addr_subf;
+				    PoC_subframe_px_ddr  <= vram_pixels + PoC_H;
+				    state                <= 8'd24;		     							  									  
+				  end else begin
+				    state                <= 8'd1;		     							  									  
+				  end				   
+				end  
+				8'd24: // start read buffer from offset ddr 
+				begin		              				
+			 	  ddr_data_req <= 1'b0;	
+              vram_reset   <= 1'b0;				  			
+				  if (!ddr_busy) begin 		
+                ddr_addr           <= ddr_addr_next;  
+                ddr_burst          <= 8'd15;					 
+                ddr_data_req       <= 1'b1;						 
+				    state              <= 8'd40;		     							  					
+				  end	 									  
 				end 
 				
 				8'd30: // switchres requested and data ready
-				begin						  
+				begin		
+              reset_switchres <= 1'b0;				
 				  if (ddr_data_ready) begin				    
 				    ddr_data_req       <= 1'b0;
 					 state              <= 8'd31;
 				  end
 				end
 				8'd31: // apply switch on vblank
-				begin						  
-				  if (vblank_core) begin 				
-					 // modeline  
-					 if (PoC_header[4 +:1]) begin
-					   PoC_H         <= ddr_data960[0  +:16];
-					   PoC_HFP       <= ddr_data960[16 +:08];
-					   PoC_HS        <= ddr_data960[24 +:08];
-					   PoC_HBP       <= ddr_data960[32 +:08];
-					   PoC_V         <= ddr_data960[40 +:16];
-					   PoC_VFP       <= ddr_data960[56 +:08];
-					   PoC_VS        <= ddr_data960[64 +:08];
-					   PoC_VBP       <= ddr_data960[72 +:08];
-						PoC_header[4 +:1] <= 1'b0;
-					 end	
-					 // pixel clock	
-                if (PoC_header[5 +:1]) begin					 
-					   PoC_pll_F_M0  <= ddr_data960[80  +:08];
-					   PoC_pll_F_M1  <= ddr_data960[88  +:08];
-					   PoC_pll_F_C0  <= ddr_data960[96  +:08];
-					   PoC_pll_F_C1  <= ddr_data960[104 +:08];
-						PoC_pll_F_K   <= ddr_data960[112 +:32];					   
-					   PoC_ce_pix    <= ddr_data960[144 +:08];
-						PoC_header[5 +:1] <= 1'b0;
-						req_modeline  <= ~new_modeline; // update pll
-					 end						 
-					 new_vmode       <= ~new_vmode; // notify to osd
+				begin								     			
+				  if (vblank_core || vram_pixels == 0) begin 				
+				  // modeline  					
+					 PoC_H         <= ddr_data960[0  +:16];
+					 PoC_HFP       <= ddr_data960[16 +:08];
+					 PoC_HS        <= ddr_data960[24 +:08];
+					 PoC_HBP       <= ddr_data960[32 +:08];
+					 PoC_V         <= ddr_data960[40 +:16];
+					 PoC_VFP       <= ddr_data960[56 +:08];
+					 PoC_VS        <= ddr_data960[64 +:08];
+					 PoC_VBP       <= ddr_data960[72 +:08];					
+				  // pixel clock	               				
+					 PoC_pll_F_M0  <= ddr_data960[80  +:08];
+					 PoC_pll_F_M1  <= ddr_data960[88  +:08];
+					 PoC_pll_F_C0  <= ddr_data960[96  +:08];
+					 PoC_pll_F_C1  <= ddr_data960[104 +:08];
+					 PoC_pll_F_K   <= ddr_data960[112 +:32];					   
+					 PoC_ce_pix    <= ddr_data960[144 +:08];										 					
+					
 					 vram_reset      <= 1'b1; 					 
-					 vga_keep_vblank <= 1'b1;					 					 
-					 state           <= 8'd32;
+					 vga_soft_reset  <= 1'b1;	   
+                req_modeline    <= ~new_modeline; // update pll				
+				    new_vmode       <= ~new_vmode;    // notify to osd				              					 
+				    state           <= 8'd1;								 					 
 				  end 			
+				end					
+		      8'd32: // apply change clk
+				begin								     							 					 
+				  req_modeline    <= ~new_modeline; // update pll				
+				  new_vmode       <= ~new_vmode; // notify to osd				              					 
+				  state           <= 8'd1;					 				 
 				end								
- 		      8'd32:  // update header modeline/change pll done
+ 		      8'd33:  // update header modeline/change pll done
 				begin		
 				  ddr_data_req <= 1'b0;				  			 				         
 				  if (!ddr_busy) begin 		
                 ddr_addr                 <= 28'd0;  						            			
 				    ddr_data_to_write        <= PoC_header;							 
                 ddr_data_write           <= 1'b1;						 
-				    state                    <= 8'd33;		     							  					
+				    state                    <= 8'd34;		     							  					
 				  end	 
 				end  		
-				8'd33:  // write ok
+				8'd34:  // write ok
 				begin		
 				  if (!ddr_busy) begin 		
                 ddr_data_write           <= 1'b0;						 						     							  				
@@ -666,6 +717,7 @@ always @(posedge clk_sys) begin
 				  if (ddr_busy) begin	// isn't necessary wait ch1 full readed for start
                 ddr_data_ch     <= 0;			             
 				    ddr_word24      <= PoC_subframe_px_vram == 0 ? 8'd0 : ddr_word24_subf;		
+					 //ddr_word24      <= 8'd0;
                 ddr_data_req    <= 1'b0;          				 
 				    state           <= 8'd43; // all prepared to put pixels on vram											       			 
 				  end	 
@@ -675,10 +727,16 @@ always @(posedge clk_sys) begin
 				begin		 
               ddr_to_vram     <= 1'b0;	
 				  ddr_word24_subf <= ddr_word24;	 	
-			     if (vram_end_frame && PoC_subframe_px_vram > 0)       state <= 8'd50; // end of frame    -> update					    				   					
+			     if (vram_end_frame && PoC_subframe_px_vram > 0) begin //end of frame
+				    PoC_frame_vram       <= PoC_frame_ddr;
+					 PoC_subframe_bl_vram <= 8'd0;
+					 PoC_subframe_px_vram <= 24'd0;					
+ 				    state                <= 8'd1; 
+				  end	 
               else if (PoC_subframe_px_ddr <= PoC_subframe_px_vram) state <= 8'd1;  // end of subframe -> wait new pixels				         										         		
 				  else if (vram_req_ready) begin	
-                     vga_keep_vblank				       <= 1'b0;
+                     vga_soft_reset				          <= 1'b0;
+							vga_wait_vblank                   <= 1'b0;
 							{r_vram_in, g_vram_in, b_vram_in} <= ddr_data960[24*(ddr_word24) +:24]; 						
 							ddr_to_vram                       <= 1'b1;		                  					
 							state                             <= 8'd44;																		  				 
@@ -739,8 +797,9 @@ always @(posedge clk_sys) begin
                 ddr_data_req <= 1'b0;	
 				    state        <= 8'd43;               				    				
 				  end	
-				end		 
-				
+				end	
+		    	
+	/*			
 		      8'd50:                        // save vram end frame, it's safe for arm rewrite ddr
 				begin		
 				  ddr_data_req               <= 1'b0;				  
@@ -749,7 +808,7 @@ always @(posedge clk_sys) begin
 			//	    ddr_data_to_write        <= {48'd0,7'd0, !vram_sync_ddr, PoC_frame_ddr[7:0]};		//update frame and synced on vram 				
 			       ddr_data_to_write        <= {8'd0,7'd0,vram_end_frame,8'd0,vram_pixels,7'd0, !vram_sync_ddr, PoC_frame_ddr[7:0]};
 					 PoC_frame_vram           <= PoC_frame_ddr;
-					 PoC_subframe_px_vram     <= 24'd0;
+					 PoC_subframe_px_vram     <= 32'd0;
                 ddr_data_write           <= 1'b1;						 
 				    state                    <= 8'd51;		     							  					
 				  end	 
@@ -761,7 +820,7 @@ always @(posedge clk_sys) begin
 					 state                    <= 8'd1;			     							  					
 				  end	 
 				end  	
-			   
+		*/	   
 				8'd60:                        // save groovy status
 				begin		
 				  ddr_data_req               <= 1'b0;				  
@@ -805,7 +864,8 @@ wire vram_end_frame;
 wire vram_synced;
 wire[23:0] vram_pixels;
 
-reg vga_keep_vblank = 1'b0;
+reg vga_soft_reset = 1'b0;
+reg vga_wait_vblank = 1'b0;
 reg vga_reset = 1'b0;
 reg ddr_to_vram = 1'b0;
 reg vram_active = 1'b0;
@@ -815,14 +875,15 @@ reg vram_sync_ddr = 1'b0;
 wire[7:0] r_core, g_core, b_core;
 wire hsync_core, vsync_core,  vblank_core, hblank_core, vga_de_core;
 wire[15:0] vga_vcount;
-wire[15:0] vga_frame;
+wire[31:0] vga_frame;
 
 vga vga 
 (           
     .clk_sys        (clk_sys),     
 	 .ce_pix         (ce_pix),
 	 .vga_reset      (vga_reset),
-	 .vga_keep_vblank(vga_keep_vblank),
+	 .vga_soft_reset (vga_soft_reset),	 
+	 .vga_wait_vblank(vga_wait_vblank),
 	 
 	  //modeline
 	 .H(PoC_H),
@@ -846,7 +907,7 @@ vga vga
 	 .vram_ready     (vram_req_ready),    // vram it's ready to write a new pixel	 
 	 .vram_end_frame (vram_end_frame),    // in vram there ara all pixels of current frame	    
 	 .vram_synced    (vram_synced),       // vram it's synced on frame
-	 .vram_pixels    (vram_pixels),		  // pixels on vram	 
+	 .vram_pixels    (vram_pixels),		  // pixels on vram (reset after saved new pixel of the next frame)	 	
 	 .vcount         (vga_vcount),	     // vertical count raster position
 	 .vga_frame      (vga_frame),         // vga vblanks counter
 	  //out signals

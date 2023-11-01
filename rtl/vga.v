@@ -9,7 +9,8 @@ module vga (
 	input  ce_pix,
 	
 	input  vga_reset,
-	input  vga_keep_vblank,
+	input  vga_soft_reset,  //not reset vga_frame counter
+	input  vga_wait_vblank, 
 
 	input [15:0] H,    // width of visible area
    input [7:0]  HFP,  // unused time before hsync 
@@ -33,12 +34,12 @@ module vga (
    input [7:0] b_in,
 	
    output        vram_ready,   		
-	output [23:0] vram_pixels,	
+	output [23:0] vram_pixels,		
 	output        vram_end_frame,   
 	output        vram_synced,		
 			
    // VGA output
-	output [15:0] vga_frame,
+	output [31:0] vga_frame,
 	output [15:0] vcount,
    output hsync,
    output vsync,
@@ -62,7 +63,7 @@ reg[15:0] h_cnt;             // horizontal pixel counter
 reg[15:0] v_cnt;             // vertical pixel counter
 reg[23:0] pixel;             // pixel rgb  
 reg[23:0] pixel_counter = 0; // total pixel counter on that frame
-reg[15:0] vga_vblanks   = 0; // pixel's frame
+reg[31:0] vga_vblanks   = 0; // pixel's frame
 reg _hs, _vs, hb, vb;        // video signals
 
 
@@ -176,12 +177,12 @@ vram vram_b_ch1(
 always@(posedge clk_sys) begin    			   
 	
 	if (!vram_init_wr || vram_reset) begin
-	    vram_addr_wr[0]    <= 16'd0;  
-       vram_addr_wr[1]    <= 16'd0;      
-		 vram_wr_select     <= 1'd0;
-	    vram_pixel_counter <= 24'd0; 	  	    					
-       vram_dirty_select  <= 1'd0;				
-       vram_init_wr       <= 1'b1;		 
+	    vram_addr_wr[0]     <= 16'd0;  
+       vram_addr_wr[1]     <= 16'd0;      
+		 vram_wr_select      <= 1'd0;
+	    vram_pixel_counter  <= 24'd0; 	  	    							    					
+       vram_dirty_select   <= 1'd0;				
+       vram_init_wr        <= 1'b1;		 
    end 		  
 	
 	vram_write[0] <= 1'b0;
@@ -189,7 +190,7 @@ always@(posedge clk_sys) begin
    
 	// write vram and swap if fulled 
 	if (vram_ready && vram_req) begin		  	 		  	
-	  vram_pixel_counter	<= vram_end_frame ? 24'd1 : (vram_pixel_counter + 1'd1);	 
+	  vram_pixel_counter  	<= vram_end_frame ? 24'd1 : (vram_pixel_counter + 1'd1);		    
 	  
 	  if (!vram_free[vram_wr_select]) begin
 	    vram_addr_wr[~vram_wr_select] <= vram_addr_wr[~vram_wr_select] + 1'd1;		
@@ -213,39 +214,55 @@ end
 // both counters count from the begin of the visibla area
 // horizontal pixel counter
 always@(posedge clk_sys) if (ce_pix) begin	 			
-		
-	// horizontal counter
-	if (h_cnt == H+HFP+HS+HBP-1) h_cnt <= 10'b0;	
-	 //else h_cnt <= h_cnt + 10'b1;
-	 else h_cnt <= (vb && vga_keep_vblank) ? h_cnt : h_cnt + 10'b1;
-
-	// generate negative hsync signal
-	if (h_cnt == H+HFP)    _hs <= 1'b0;	
-	if (h_cnt == H+HFP+HS) _hs <= 1'b1;	   
 	
-   // horizontal blanking	
-	if (h_cnt >= H) hb <= 1'b1; 
-	 else hb <= 1'b0;      
+	if (vga_reset) vga_vblanks <= 16'd0;
+	if (vram_active && v_cnt == 0 && h_cnt == H+HFP) vga_vblanks <= vga_vblanks + 1'd1;
+	 
+   if (vga_soft_reset) begin
+	  h_cnt <= 1'b0;
+	  _hs   <= 1'b1;
+	  hb    <= 1'b1;
+	end 
+	else begin 
+	  // horizontal counter	 
+	  if (h_cnt == H+HFP+HS+HBP-1) h_cnt <= 10'b0;	
+	   else h_cnt <= h_cnt + 10'b1;	
+
+	  // generate negative hsync signal
+	  if (h_cnt == H+HFP)    _hs <= 1'b0;	
+	  if (h_cnt == H+HFP+HS) _hs <= 1'b1;	   
+	
+     // horizontal blanking	
+	  if (h_cnt >= H) hb <= 1'b1; 
+	   else hb <= 1'b0;      
+	end	
 	
 end
 
 // vertical pixel counter
-always@(posedge clk_sys) if (ce_pix) begin  	
-  	
-	// the vertical counter is processed at the begin of each hsync
-	if (h_cnt == H+HFP) begin
-	  if (v_cnt == VS+VBP+V+VFP-1) v_cnt <= 10'b0; 
-		//else v_cnt <= v_cnt + 10'b1;
-		 else v_cnt <= (vb && vga_keep_vblank) ? v_cnt : v_cnt + 10'b1;
-
-     // generate negative vsync signal
-	  if (v_cnt == V+VFP)    _vs <= 1'b0;
-	  if (v_cnt == V+VFP+VS) _vs <= 1'b1;
+always@(posedge clk_sys) if (ce_pix) begin  	  		
+	
+	if (vga_soft_reset) begin
+	  v_cnt <= V+1'd1;
+	  _vs   <= 1'b1;
+	  vb    <= 1'b1;
+	end 
+	else begin  
+	  // the vertical counter is processed at the begin of each hsync
+	  if (h_cnt == H+HFP) begin
+	    if (v_cnt == VS+VBP+V+VFP-1) v_cnt <= 10'b0; 		   		  		 
+		  else v_cnt <= v_cnt + 10'b1;					 
+		  
+       // generate negative vsync signal
+	    if (v_cnt == V+VFP)    _vs <= 1'b0;
+	    if (v_cnt == V+VFP+VS) _vs <= 1'b1;
 	  	    
-     // blanking signal	
-	  if (v_cnt >= V) vb <= 1'b1; 
-	   else vb <= 1'b0;		     	  
-	end
+       // blanking signal	
+	    if (v_cnt >= V) vb <= 1'b1; 
+	     else vb <= 1'b0;	
+		
+	   end	 
+	end 
   
 end
 
@@ -265,12 +282,12 @@ always@(posedge clk_sys) begin
 	  vram_init_rd      <= 1'b1;	 
    end 	
 	
-   if (vga_reset) vga_vblanks <= 16'd0;	
+	if (vga_wait_vblank) vram_wait_vblank <= 1'b1;
 	
    if (ce_pix) begin  
 	
 		// non vram output
-		if (!vram_active) begin    
+		if (!vram_active || vga_soft_reset) begin    
         vram_wait_vblank  <= 1'b1;		
 		  if (vga_de) begin 		    
 			 pixel_counter    <= pixel_counter + 1'd1;
@@ -285,17 +302,16 @@ always@(posedge clk_sys) begin
 		  
 		// vram output  
 		end else begin			    		     		  		 		  
-		  // cache first 80 pixels before start 
-		  if (vram_pixel_counter > 80 && !vram_start) begin						 			
+		 		 				 					 				 
+		  if (!vram_start) begin						 					 				 		
 			 vram_start       <= 1'b1;								 
 			 pixel_counter    <= 24'd0;
 		  end		  		  
 		  
 		  // visible area?		
 		  if (vga_de && !vram_wait_vblank && vram_start) begin	
-		    if (pixel_counter == 0) vga_vblanks <= vga_vblanks + 1'd1;
-			 pixel_counter <= pixel_counter + 1'd1;
-			 
+		    			 
+			 pixel_counter <= pixel_counter + 1'd1;			 
 			 // get vram pixel and swap if needed for next read
 			 pixel <= vram_addr_rd[vram_rd_select] <= vram_addr_wr[vram_rd_select] ? {vram_rgb_r[vram_rd_select],vram_rgb_g[vram_rd_select],vram_rgb_b[vram_rd_select]} : {R_NO_VRAM,G_NO_VRAM,B_NO_VRAM};				 
 			 if (vram_addr_rd[vram_rd_select] > vram_addr_wr[vram_rd_select]) vram_out_sync <= 1'b1;
@@ -309,10 +325,10 @@ always@(posedge clk_sys) begin
 			 										 
 		  end else begin
 			 pixel <= 24'h00;  //0v on blanking 
-			 if (vb) begin 
+			 if (vb) begin 			 			   
 				pixel_counter    <= 24'd0; 			 				
-				vram_wait_vblank <= 1'b0;            
-			 end	 
+				vram_wait_vblank <= 1'b0;            				
+			 end				 
 		  end  // no visible area	  	
 	  end //vram output	  
 	  

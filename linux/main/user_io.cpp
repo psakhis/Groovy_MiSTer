@@ -3374,7 +3374,7 @@ void user_io_poll()
 	}
 
 	if (CheckTimer(led_timer) && !is_menu())
-	{
+	{				
 		led_timer = GetTimer(LED_FREQ);
 		if (!use_ps2ctl)
 		{
@@ -3405,7 +3405,7 @@ void user_io_poll()
 		res_timer = GetTimer(1000);
 	}
 	else if (CheckTimer(res_timer))
-	{
+	{ 
 		if (is_menu())
 		{
 			static int got_cfg = 0;
@@ -3466,7 +3466,7 @@ void user_io_poll()
 	save_volume();
 
 	if (diskled_is_on && CheckTimer(diskled_timer))
-	{
+	{		
 		fpga_set_led(0);
 		diskled_is_on = 0;
 	}

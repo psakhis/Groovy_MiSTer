@@ -23,11 +23,21 @@ module hps_ext
 	input             clk_sys,
 	inout      [35:0] EXT_BUS,	
 	input             hps_rise,	
-	input      [1:0]  verbose,	
-	input      [1:0]  subframe_px,	
+	input      [1:0]  hps_verbose,	
+	input      [2:0]  hps_blit,	
+	input             vga_frameskip,	
 	input      [15:0] vga_vcount,	
-	input      [15:0] vga_frame,	
-   output reg        cmd_init = 0	
+	input      [31:0] vga_frame,	
+	input             vga_vblank,	
+	input      [23:0] vram_pixels,
+	input             vram_synced,
+	input             vram_end_frame,
+	input             vram_ready,
+   output reg        cmd_init = 0,
+	input             reset_switchres,
+   output reg        cmd_switchres = 0,		
+	input             reset_blit,
+   output reg        cmd_blit = 0		
  );
 
 assign EXT_BUS[15:0] = io_dout;
@@ -37,11 +47,13 @@ wire io_strobe = EXT_BUS[33];
 wire io_enable = EXT_BUS[34];
 
 localparam EXT_CMD_MIN = GET_GROOVY_STATUS;
-localparam EXT_CMD_MAX = SET_INIT;
+localparam EXT_CMD_MAX = SET_BLIT;
 
 localparam GET_GROOVY_STATUS = 'hf0;
 localparam GET_GROOVY_HPS    = 'hf1;
 localparam SET_INIT          = 'hf2;
+localparam SET_SWITCHRES     = 'hf3;
+localparam SET_BLIT          = 'hf4;
 
 reg [15:0] io_dout;
 reg        dout_en = 0;
@@ -54,6 +66,9 @@ always@(posedge clk_sys) begin
 
 	old_hps_rise <= hps_rise;
 	if(old_hps_rise ^ hps_rise) hps_rise_req <= hps_rise_req + 1'd1;
+	
+	if (reset_switchres) cmd_switchres <= 1'b0;	
+	if (reset_blit) cmd_blit <= 1'b0;	
 	
 	if(~io_enable) begin
 		dout_en <= 0;
@@ -73,22 +88,36 @@ always@(posedge clk_sys) begin
 			if(io_din == GET_GROOVY_STATUS) io_dout <= hps_rise_req; 		
 			if(io_din == GET_GROOVY_HPS)    io_dout <= hps_rise_req; 		
 			if(io_din == SET_INIT)          io_dout <= hps_rise_req; 		
+			if(io_din == SET_SWITCHRES)     io_dout <= hps_rise_req; 					
+			if(io_din == SET_BLIT)          io_dout <= hps_rise_req; 					
 		end else begin
-
+	      
 			case(cmd)
 
-				GET_GROOVY_STATUS: case(byte_cnt)
-				         1: io_dout <= vga_vcount;
-							2: io_dout <= vga_frame;							
+				GET_GROOVY_STATUS: case(byte_cnt)				         
+							1: io_dout <= vga_frame[15:0];
+							2: io_dout <= vga_frame[31:16];							
+							3: io_dout <= vga_vcount; 
+							4: io_dout <= vram_pixels[15:0];
+							5: io_dout <= {3'd0, vga_vblank, vga_frameskip, vram_synced, vram_end_frame, vram_ready, vram_pixels[23:16]};							
 						endcase
 						
 				GET_GROOVY_HPS: case(byte_cnt)
-				         1: io_dout <= {4'd0,subframe_px,verbose};													
+				         1: io_dout <= {3'd0, hps_blit, hps_verbose};													
 						endcase					
 						
 				SET_INIT: case(byte_cnt)
 							1: cmd_init <= io_din[0];			
-						endcase 					
+						endcase 
+						
+				SET_SWITCHRES: case(byte_cnt)
+							1: cmd_switchres <= io_din[0];			
+						endcase 
+						
+				SET_BLIT: case(byte_cnt)
+							1: cmd_blit <= io_din[0];			
+						endcase		
+									
 			endcase
 		end
 	end
