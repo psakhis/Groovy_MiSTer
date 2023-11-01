@@ -6,10 +6,17 @@ This core is a no gpu for crt
 To work with, see Windows client examples
 
 #define CMD_CLOSE 1
+
 #define CMD_INIT 2
+
 #define CMD_SWITCHRES 3
+
 #define CMD_BLIT 4
+
 #define CMD_GET_STATUS 5
+
+
+
 
 CMD_CLOSE -> Close emulator. 1 byte udp packet
 
