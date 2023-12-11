@@ -63,7 +63,7 @@
 #define CMD_SWITCHRES 3
 #define CMD_BLIT 4
 #define CMD_GET_STATUS 5
-//#define CMD_ACK_STATUS 6
+#define CMD_BLIT_VSYNC 6
 
 //https://stackoverflow.com/questions/64318331/how-to-print-logs-on-both-console-and-file-in-c-language
 #define LOG_TIMER 16
@@ -179,11 +179,11 @@ static int isBlitting = 0;
 
 static uint8_t hpsBlit = 0; 
 static uint8_t numBlit = 0;
-static uint8_t waitBlit = 0;
 static uint8_t doBlocks = 0;
+static uint8_t doAlwaysStatus = 0;
+static uint8_t doACKStatus = 0;
 static uint8_t isConnected = 0; 
 static unsigned long isTimeout = 0; 
-static unsigned long statusTime = 0;  
 
 /* FPGA HPS EXT STATUS */
 static uint16_t fpga_vga_vcount = 0;
@@ -538,13 +538,12 @@ static void groovy_udp_server_stop()
 
 static void setClose()
 {          				
-	isBlitting = 0;	
-	statusTime = 0;
-	waitBlit = 0;
+	isBlitting = 0;		
 	blitCompression = 0;
+	doAlwaysStatus = 0;
+	doACKStatus = 0;
 	LZ4offset = 0;
-	free(poc);
-	poc = NULL;
+	free(poc);	
 	initDDR();
 	groovy_FPGA_init(0);
 	isConnected = 0;
@@ -565,17 +564,41 @@ static void sendStatus()
 	sendto(sockfd, sendbuf, 6, flags, (struct sockaddr *)&clientaddr, clilen);								
 }
 
+static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
+{          	
+	LOG(1, "[ACK_STATUS][DDR px=%d fr=%d][BLIT fr=%d vsync=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, udp_frame, udp_vsync, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
+	
+	int flags = 0;
+	flags |= MSG_CONFIRM;	
+	char sendbuf[12];
+	//echo
+	sendbuf[0] = udp_frame & 0xff;
+	sendbuf[1] = udp_frame >> 8;	
+	sendbuf[2] = udp_frame >> 16;	
+	sendbuf[3] = udp_frame >> 24;	
+	sendbuf[4] = udp_vsync & 0xff;
+	sendbuf[5] = udp_vsync >> 8;
+	//gpu
+	sendbuf[6] = fpga_vga_frame  & 0xff;
+	sendbuf[7] = fpga_vga_frame  >> 8;	
+	sendbuf[8] = fpga_vga_frame  >> 16;	
+	sendbuf[9] = fpga_vga_frame  >> 24;	
+	sendbuf[10] = fpga_vga_vcount & 0xff;
+	sendbuf[11] = fpga_vga_vcount >> 8;
+	sendto(sockfd, sendbuf, 12, flags, (struct sockaddr *)&clientaddr, clilen);								
+}
+
 static void setInit(uint8_t compression)
 {          				
 	blitCompression = compression;
 	LZ4offset = 0;
+	doACKStatus = 0;
+	doAlwaysStatus = 0;
 	poc = (PoC_type *) calloc(1, sizeof(PoC_type));
 	initDDR();
 	groovy_FPGA_init(0);
 	groovy_FPGA_init(1);																	
 	isBlitting = 0;	
-	statusTime = 0;
-	waitBlit = 0;
 	
 	if (!isConnected)
 	{
@@ -596,6 +619,11 @@ static void setBlit(uint32_t udp_frame, uint16_t udp_vsync)
 	isBlitting = 1;	
 	numBlit = hpsBlit;	
 	
+	if (udp_vsync != 0)
+	{
+		doAlwaysStatus = 1;	
+		doACKStatus = 1;
+	}	
 	if (doVerbose < 3)
 	{
 		groovy_FPGA_status_fast();
@@ -638,14 +666,7 @@ static void setBlitRaw(uint16_t len)
         		LOG(1, "[ACK_BLIT][DDR px=%d fr=%d]\n", poc->PoC_pixels_len,  poc->PoC_frame_recv);
 			groovy_FPGA_blit(poc->PoC_pixels_len, numBlit);	
         	}
-        	
-        	if (poc->PoC_frame_vsync != 0)
-        	{       	
-        		groovy_FPGA_status();        		
-        		statusTime = getTimerStatus(fpga_vga_frame, poc->PoC_frame_recv, fpga_vga_vcount, poc->PoC_frame_vsync - 10);     
-        		waitBlit = 0;    	        	        		
-        	}	        	
-        	
+        	        	
 		gettimeofday(&blitStop, NULL); 
         	int difBlit = ((blitStop.tv_sec - blitStart.tv_sec) * 1000000 + blitStop.tv_usec - blitStart.tv_usec);
 		LOG(1, "[DDR_BLIT][TOTAL %06.3f]\n",(double) difBlit/1000); 			                	 
@@ -791,30 +812,27 @@ void groovy_poll()
 	
 	for (;;)
 	{	
+		if (doAlwaysStatus)
+		{		
+			groovy_FPGA_status_fast();
+		}	
+		
+		/*
 		if (isConnected && doVerbose == 3 && !isBlitting)
 		{
 			groovy_FPGA_status_fast();
      			LOG(3, "[GET_STATUS][DDR px=%d fr=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
      		}	
+     		*/
      		
-		// ack vsync	
-		if (!isBlitting && statusTime != 0 && CheckTimer(statusTime))		
+     		// ack vsync?	
+     		if (doACKStatus && getNormalizedVCount(fpga_vga_frame, fpga_vga_vcount) >= getNormalizedVCount(poc->PoC_frame_recv, poc->PoC_frame_vsync))
 		{
-			waitBlit = 1;
-			if (doVerbose < 3) 
-			{
-				groovy_FPGA_status_fast();							
-				LOG(2, "[GET_STATUS][DDR px=%d fr=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
-			}	
-			
-			if (getNormalizedVCount(fpga_vga_frame, fpga_vga_vcount) >= getNormalizedVCount(poc->PoC_frame_recv, poc->PoC_frame_vsync))
-			{
-				statusTime = 0;								
-				LOG(1, "[ACK_STATUS][DDR px=%d fr=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
-				sendStatus();
-			}
+			doACKStatus = 0;
+			LOG(1, "[ACK_STATUS][DDR px=%d fr=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
+			sendStatus();
 		}
-				
+									
 		recvbufPtr = (isBlitting && !blitCompression) ? (char *) (buffer + HEADER_OFFSET + poc->PoC_bytes_recv) : (char *) &recvbuf[LZ4offset];								
 		len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);
 							
@@ -866,7 +884,7 @@ void groovy_poll()
 				       		{
 				       			LOG(1, "[CMD_BLIT][%d][Frame=%d][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_vsync);
 				       		}																		
-				       		setBlit(udp_frame, udp_vsync);				       					       		
+				       		setBlit(udp_frame, udp_vsync);					       				       					       		
 					}; break;
 					
 					case CMD_GET_STATUS:
@@ -874,6 +892,24 @@ void groovy_poll()
 						groovy_FPGA_status();					
 				       		LOG(1, "[CMD_GET_STATUS][%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d sync=%d free=%d eof=%d]\n", recvbufPtr[0], fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				       		
 						sendStatus();							        				
+					}; break;
+					
+					case CMD_BLIT_VSYNC:
+					{							
+						uint32_t udp_frame = ((uint32_t) recvbufPtr[4]  << 24) | ((uint32_t)recvbufPtr[3]  << 16) | ((uint32_t)recvbufPtr[2]  << 8) | recvbufPtr[1];
+						uint16_t udp_vsync = ((uint16_t) recvbufPtr[6]  << 8) | recvbufPtr[5];
+						if (len > 6 && blitCompression)
+						{
+							LZ4blockSize = ((uint16_t) recvbufPtr[8]  << 8) | recvbufPtr[7];
+							LOG(1, "[CMD_BLIT_VSYNC][%d][Frame=%d][Vsync=%d][BlockSize=%d]\n", recvbufPtr[0], udp_frame, udp_vsync, LZ4blockSize);							
+						}	
+				       		else
+				       		{
+				       			LOG(1, "[CMD_BLIT_VSYNC][%d][Frame=%d][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_vsync);
+				       		}																		
+				       		setBlit(udp_frame, 0);	
+				       		groovy_FPGA_status();	
+				       		sendACK(udp_frame, udp_vsync);			       					       		
 					}; break;
 					
 					default: 
@@ -917,7 +953,7 @@ void groovy_poll()
 			}
 		}
 									       				
-		if (!isBlitting && !waitBlit)		
+		if (!isBlitting)		
 		{						
 			break;
 		}						
