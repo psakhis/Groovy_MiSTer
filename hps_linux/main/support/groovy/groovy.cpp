@@ -325,9 +325,23 @@ static void groovy_FPGA_status_fast()
 		fpga_vga_frameskip  = bits.u.bit3;   
 		fpga_vga_vblank     = bits.u.bit4;   		
 		
-		if (fpga_vga_vcount <= poc->PoC_interlaced)
+		if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 		{
-			fpga_vga_vcount = (poc->PoC_interlaced && !fpga_vga_vcount) ? poc->PoC_V_Total - 1 : poc->PoC_V_Total;
+			if (poc->PoC_interlaced)
+			{
+				if (!fpga_vga_vcount) //based on field
+				{
+					fpga_vga_vcount = poc->PoC_V_Total;
+				}
+				else
+				{
+					fpga_vga_vcount = poc->PoC_V_Total - 1;
+				}
+			}
+			else
+			{
+				fpga_vga_vcount = poc->PoC_V_Total;
+			}			
 		}
 		
 		fpga_vram_queue = spi_w(0) | spi_w(0) << 16;
@@ -380,9 +394,23 @@ static void groovy_FPGA_status()
 			fpga_vga_frameskip  = bits.u.bit3;   
 			fpga_vga_vblank     = bits.u.bit4;   		
 			
-			if (fpga_vga_vcount <= poc->PoC_interlaced)
+			if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 			{
-				fpga_vga_vcount = (poc->PoC_interlaced && !fpga_vga_vcount) ? poc->PoC_V_Total - 1 : poc->PoC_V_Total;
+				if (poc->PoC_interlaced)
+				{
+					if (!fpga_vga_vcount) //based on field
+					{
+						fpga_vga_vcount = poc->PoC_V_Total;
+					}
+					else
+					{
+						fpga_vga_vcount = poc->PoC_V_Total - 1;
+					}
+				}
+				else
+				{
+					fpga_vga_vcount = poc->PoC_V_Total;
+				}			
 			}	
 			
 			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;	
