@@ -30,6 +30,7 @@ module hps_ext
 	input      [31:0] vga_frame,	
 	input             vga_vblank,	
 	input      [23:0] vram_pixels,
+	input      [23:0] vram_queue,
 	input             vram_synced,
 	input             vram_end_frame,
 	input             vram_ready,
@@ -37,7 +38,16 @@ module hps_ext
 	input             reset_switchres,
    output reg        cmd_switchres = 0,		
 	input             reset_blit,
-   output reg        cmd_blit = 0		
+   output reg        cmd_blit = 0/*,    DEBUG
+	input      [23:0] PoC_frame_vram,
+   input      [23:0] PoC_subframe_px_vram,	
+	input      [15:0] PoC_subframe_bl_vram,
+	input      [23:0] PoC_frame_ddr,
+   input      [23:0] PoC_frame_px_ddr,	
+	input      [15:0] PoC_frame_bl_ddr,
+	input             punt1,
+	input             punt2,
+	input             punt3*/
  );
 
 assign EXT_BUS[15:0] = io_dout;
@@ -68,7 +78,7 @@ always@(posedge clk_sys) begin
 	if(old_hps_rise ^ hps_rise) hps_rise_req <= hps_rise_req + 1'd1;
 	
 	if (reset_switchres) cmd_switchres <= 1'b0;	
-	if (reset_blit) cmd_blit <= 1'b0;	
+	if (reset_blit) cmd_blit <= 1'b0;		
 	
 	if(~io_enable) begin
 		dout_en <= 0;
@@ -93,13 +103,22 @@ always@(posedge clk_sys) begin
 		end else begin
 	      
 			case(cmd)
-
+ 
 				GET_GROOVY_STATUS: case(byte_cnt)				         
 							1: io_dout <= vga_frame[15:0];
 							2: io_dout <= vga_frame[31:16];							
 							3: io_dout <= vga_vcount; 
 							4: io_dout <= vram_pixels[15:0];
-							5: io_dout <= {3'd0, vga_vblank, vga_frameskip, vram_synced, vram_end_frame, vram_ready, vram_pixels[23:16]};							
+							//5: io_dout <= {punt3,punt2,punt1, vga_vblank, vga_frameskip, vram_synced, vram_end_frame, vram_ready, vram_pixels[23:16]};							
+							5: io_dout <= {3'd0, vga_vblank, vga_frameskip, vram_synced, vram_end_frame, vram_ready, vram_pixels[23:16]};	
+							6: io_dout <= vram_queue[15:0];
+							7: io_dout <= {8'd0, vram_queue[23:16]};
+						/*	6: io_dout <= PoC_frame_vram[15:0];
+							7: io_dout <= PoC_subframe_px_vram[15:0];
+							8: io_dout <= PoC_subframe_bl_vram;
+							9: io_dout <= PoC_frame_ddr[15:0];
+						  10: io_dout <= PoC_frame_px_ddr[15:0];
+						  11: io_dout <= PoC_frame_bl_ddr;*/
 						endcase
 						
 				GET_GROOVY_HPS: case(byte_cnt)

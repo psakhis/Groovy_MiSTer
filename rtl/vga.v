@@ -9,6 +9,7 @@ module vga (
 	input  ce_pix,
 	
 	input  vga_reset,
+	input  vga_frame_reset, //reset vga_frame counter   
 	input  vga_soft_reset,  //not reset vga_frame counter
 	input  vga_wait_vblank, 
 
@@ -20,6 +21,7 @@ module vga (
    input [7:0]  VFP,  // unused time before vsync
    input [7:0]  VS,   // width of vsync
    input [7:0]  VBP,  // unused time after vsync
+	input [7:0]  interlaced,  
 	
 	input  vram_req,
 	input  vram_active,
@@ -35,6 +37,7 @@ module vga (
 	
    output        vram_ready,   		
 	output [23:0] vram_pixels,		
+	output [23:0] vram_queue,
 	output        vram_end_frame,   
 	output        vram_synced,		
 			
@@ -48,7 +51,9 @@ module vga (
    output [7:0] b,
 	output vga_de,	
 	output hblank,
-	output vblank
+	output vblank,
+	
+	output vga_f1
 );
 				
 parameter R_NO_VRAM = 8'hFF;
@@ -64,8 +69,18 @@ reg[15:0] v_cnt;             // vertical pixel counter
 reg[23:0] pixel;             // pixel rgb  
 reg[23:0] pixel_counter = 0; // total pixel counter on that frame
 reg[31:0] vga_vblanks   = 0; // pixel's frame
+reg field = 1'b0; 			  // interlaced field (0 - odd / 1 - even)
 reg _hs, _vs, hb, vb;        // video signals
 
+wire[15:0] H_pulse_start;
+wire[15:0] V_total;
+wire[15:0] V_pulse_start;
+wire[15:0] V_pulse_end;
+
+assign H_pulse_start = (interlaced && field) ? (H+HFP) >> 1 : H+HFP;
+assign V_total       = (interlaced && field) ? V+VBP+VFP+VS - 1'b1 : V+VBP+VFP+VS;
+assign V_pulse_start = (interlaced && field) ? V+VFP + 1'b1 : V+VFP;
+assign V_pulse_end   = (interlaced && field) ? V+VFP+VS + 1'b1 : V+VFP+VS;
 
 assign r = pixel[23:16];
 assign g = pixel[15:8];
@@ -78,6 +93,7 @@ assign hsync     = ~_hs;
 assign vsync     = ~_vs;
 assign vblank    = vb;
 assign hblank    = hb;
+assign vga_f1    = field;
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -99,12 +115,18 @@ reg       vram_start = 1'b0;           // start using vram
 
 
 wire      vram_free[2];  
-assign    vram_free[0]   = (vram_addr_wr[0] < VRAM_SIZE);   // vram 0 isn't full
-assign    vram_free[1]   = (vram_addr_wr[1] < VRAM_SIZE);   // vram 1 isn't full
-assign    vram_ready     = (vram_free[0] || vram_free[1]);  // vram it's ready to write a new pixel
-assign    vram_end_frame = (vram_pixel_counter >= (H * V)); // vram with all frame
-assign    vram_pixels    = vram_pixel_counter;              // number of current pixels on vram
-assign    vram_synced    = !vram_out_sync; 						// from point of view vram, synced frame
+assign    vram_free[0]   = (vram_addr_wr[0] < VRAM_SIZE);                 // vram 0 isn't full
+assign    vram_free[1]   = (vram_addr_wr[1] < VRAM_SIZE);                 // vram 1 isn't full
+assign    vram_ready     = (vram_free[0] || vram_free[1]);                // vram it's ready to write a new pixel
+//assign    vram_end_frame = interlaced ? (vram_pixel_counter >= (H * (V >> 1))) : (vram_pixel_counter >= (H * V)); // vram with all frame
+assign    vram_end_frame = vram_pixel_counter >= ((H * V) >> interlaced); // vram with all frame
+assign    vram_pixels    = vram_pixel_counter;                            // number of current pixels writed on vram for a frame
+assign    vram_synced    = !vram_out_sync; 					             	  // from point of view vram, synced frame
+
+wire [23:0] vram_pixels_queue[2];
+assign    vram_pixels_queue[0] = vram_addr_wr[0] >= vram_addr_rd[0] ? vram_addr_wr[0] - vram_addr_rd[0] + 24'd1 : 24'd0;
+assign    vram_pixels_queue[1] = vram_addr_wr[1] >= vram_addr_rd[1] ? vram_addr_wr[1] - vram_addr_rd[1] + 24'd1 : 24'd0;  
+assign    vram_queue           = vram_pixels_queue[0] + vram_pixels_queue[1]; //pixels prepared to read
 
 wire[7:0] vram_rgb_r[2];
 wire[7:0] vram_rgb_g[2];
@@ -213,58 +235,87 @@ end
 
 // both counters count from the begin of the visibla area
 // horizontal pixel counter
-always@(posedge clk_sys) if (ce_pix) begin	 			
-	
-	if (vga_reset) vga_vblanks <= 16'd0;
-	if (vram_active && v_cnt == 0 && h_cnt == H+HFP) vga_vblanks <= vga_vblanks + 1'd1;
+always@(posedge clk_sys) begin
+
+ if (vga_reset || vga_frame_reset) begin	
+	vga_vblanks <= 16'd0;
+ end  	
 	 
-   if (vga_soft_reset) begin
-	  h_cnt <= 1'b0;
-	  _hs   <= 1'b1;
-	  hb    <= 1'b1;
-	end 
-	else begin 
+ if (vga_reset || vga_soft_reset) begin
+   h_cnt <= 10'b0;
+   _hs   <= 1'b1;
+   hb    <= 1'b1;
+ end 
+ 
+ if (ce_pix && !vga_reset && !vga_soft_reset) begin	 			
+	
+	if (vram_active && h_cnt == H+HFP && v_cnt <= interlaced) vga_vblanks <= vga_vblanks + 1'd1;
+   //frame counter	
+   /*if (vram_active && h_cnt == H+HFP) begin	
+	  if (interlaced  && v_cnt <= 10'd1) vga_vblanks <= vga_vblanks + 1'd1;
+	  if (!interlaced && v_cnt == 10'd0) vga_vblanks <= vga_vblanks + 1'd1;	  
+	end*/
+	
+	if (!vga_reset && !vga_soft_reset) begin
 	  // horizontal counter	 
-	  if (h_cnt == H+HFP+HS+HBP-1) h_cnt <= 10'b0;	
+	  if (h_cnt >= H+HFP+HS+HBP-1) h_cnt <= 10'b0;	
 	   else h_cnt <= h_cnt + 10'b1;	
 
 	  // generate negative hsync signal
-	  if (h_cnt == H+HFP)    _hs <= 1'b0;	
-	  if (h_cnt == H+HFP+HS) _hs <= 1'b1;	   
+	  if (h_cnt >= H+HFP)    _hs <= 1'b0;	
+	  if (h_cnt >= H+HFP+HS) _hs <= 1'b1;	   
 	
      // horizontal blanking	
 	  if (h_cnt >= H) hb <= 1'b1; 
 	   else hb <= 1'b0;      
 	end	
-	
+ end
+ 
 end
 
+
 // vertical pixel counter
-always@(posedge clk_sys) if (ce_pix) begin  	  		
-	
-	if (vga_soft_reset) begin
-	  v_cnt <= V+1'd1;
-	  _vs   <= 1'b1;
-	  vb    <= 1'b1;
-	end 
-	else begin  
+always@(posedge clk_sys) begin
+  
+ if (vga_reset) begin
+   v_cnt <= 10'b0;
+   _vs   <= 1'b1;
+   vb    <= 1'b1;	
+ end
+ 
+ if (!interlaced || vga_reset) field <= 1'b0;
+ 
+ if (vga_soft_reset) begin  
+   v_cnt <= (interlaced && !field) ? V+10'd2 : V+10'd1;	 
+	_vs   <= 1'b1;
+   vb    <= 1'b1;	
+ end 
+
+ if (ce_pix && !vga_reset && !vga_soft_reset) begin  	  			
+							 
 	  // the vertical counter is processed at the begin of each hsync
 	  if (h_cnt == H+HFP) begin
-	    if (v_cnt == VS+VBP+V+VFP-1) v_cnt <= 10'b0; 		   		  		 
-		  else v_cnt <= v_cnt + 10'b1;					 
-		  
-       // generate negative vsync signal
-	    if (v_cnt == V+VFP)    _vs <= 1'b0;
-	    if (v_cnt == V+VFP+VS) _vs <= 1'b1;
-	  	    
-       // blanking signal	
+	    if (v_cnt >= V_total-1) begin 												 //V_total changes on interlaced field by 1
+		   v_cnt <= ((interlaced && field) || !interlaced) ? 1'b0 : 1'b1;  //field is not updated yet, on interlaced alternate counter
+         field <= interlaced ? !field : 1'b0;			                   //swap fields for nexts v_cnts
+		 end else begin	
+		   v_cnt <= interlaced ? v_cnt + 10'd2 : v_cnt + 10'd1;		       //interlaced alternate 2 lines according to field			 
+		 end
+		 
+		 // blanking signal	
 	    if (v_cnt >= V) vb <= 1'b1; 
-	     else vb <= 1'b0;	
-		
-	   end	 
-	end 
-  
+	     else vb <= 1'b0;
+	  end
+	  
+	  // negative vsync signal depends from hsync pulse, on interlaced is between 2 hsync edges
+	  if (h_cnt == H_pulse_start) begin       
+	    if (v_cnt >= V_pulse_start) _vs <= 1'b0;                         //V_pulse_start changes on interlaced field by 1
+	    if (v_cnt >= V_pulse_end)   _vs <= 1'b1;	                        //V_pulse_end changes on interlaced field by 1 
+	  end	 
+ end	
+ 
 end
+
 
 // show pixel
 always@(posedge clk_sys) begin       		   	  				
@@ -338,5 +389,81 @@ end
 
 
 endmodule
+
+// vertical pixel counter
+/*
+always@(posedge clk_sys) if (ce_pix) begin  	  		
+	
+	
+	if (!interlaced) begin
+	
+	  VTotal <= 525;
+     VSTotal <= 491;
+     VFPTotal <= 485;
+     HOffset <= 733;
+	  field <= 1'b0;
+	
+	if (vga_reset) begin
+	  field <= 1'b0;
+	end
+	
+	if (vga_soft_reset) begin
+	  v_cnt <= V+1'd1;
+	  _vs   <= 1'b1;
+	  vb    <= 1'b1;
+	  field <= 1'b0;
+	end 
+	else begin  
+	  // the vertical counter is processed at the begin of each hsync
+	  if (h_cnt == H+HFP) begin
+	    if (v_cnt == VS+VBP+V+VFP-1) v_cnt <= 10'b0;  		   		   		  		 					 		  		
+		  else v_cnt <= v_cnt + 10'b1;					 
+		  
+       // generate negative vsync signal
+	    if (v_cnt == V+VFP)    _vs <= 1'b0;
+	    if (v_cnt == V+VFP+VS) _vs <= 1'b1;
+		 	  	    
+       // blanking signal	
+	    if (v_cnt >= V) vb <= 1'b1; 
+	     else vb <= 1'b0;			 	
+		
+	   end	 
+	end 
+	
+	end else begin
+	
+	  if (h_cnt == H+HFP) begin
+	   // if (v_cnt >= VTotal-1) begin
+		   if (v_cnt >= V_total-1) begin
+			  v_cnt <= field ? 1'b0 : 1'b1;						
+		     field <= !field;
+
+		//	 VTotal <= field ? 525 : 524;			
+		//	 HOffset <= field ? 733 : 366;	
+		
+	   //    VSTotal <= field ? 491 : 492;		
+		//	 VFPTotal <= field ? 485 : 486; 			 			 
+	     		 			  	     
+		 end else
+		    v_cnt <= v_cnt + 10'd2;
+		 	    
+	    if (v_cnt >= V) vb <= 1'b1; 
+	     else vb <= 1'b0;			  
+	  end	  
+	  
+	  //if (h_cnt == HOffset) begin
+	  if (h_cnt == H_pulse_start) begin
+	    //if (v_cnt >= VFPTotal) _vs <= 1'b0;
+	    //if (v_cnt >= VSTotal)  _vs <= 1'b1;	    		
+ 	    if (v_cnt >= V_pulse_start) _vs <= 1'b0;
+	    if (v_cnt >= V_pulse_end)   _vs <= 1'b1;	    		
+
+	  end
+	  
+	
+	end
+			  
+end
+*/
 
 
