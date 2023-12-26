@@ -188,6 +188,10 @@ static uint8_t isConnected = 0;
 static unsigned long isTimeout = 0; 
 
 /* FPGA HPS EXT STATUS */
+
+static uint16_t fpga_vga_vcount_ant = 0;
+static uint32_t fpga_vga_frame_ant = 0;
+
 static uint16_t fpga_vga_vcount = 0;
 static uint32_t fpga_vga_frame = 0;
 static uint32_t fpga_vram_pixels = 0;
@@ -301,7 +305,10 @@ static void groovy_FPGA_status_fast()
 	EnableIO();	
 	uint16_t req = fpga_spi_fast(UIO_GET_GROOVY_STATUS);		
   	if (req)
-  	{	  						  						  					
+  	{	  		
+  		fpga_vga_frame_ant  = fpga_vga_frame;
+  		fpga_vga_vcount_ant = fpga_vga_vcount;
+  						  						  					
 		fpga_vga_frame   = spi_w(0) | spi_w(0) << 16;  			  					
 		fpga_vga_vcount  = spi_w(0);
 		uint16_t word161 = spi_w(0);  			 
@@ -324,6 +331,11 @@ static void groovy_FPGA_status_fast()
 		}
 		
 		fpga_vram_queue = spi_w(0) | spi_w(0) << 16;
+		
+		if (fpga_vga_frame_ant == fpga_vga_frame && fpga_vga_vcount < fpga_vga_vcount_ant) //hack fix for sppi delay
+		{
+			fpga_vga_frame++;
+		}
 		
 		/*
 		fpga_poc_frame_vram = spi_w(0);
@@ -348,7 +360,10 @@ static void groovy_FPGA_status()
   	{
   		req = spi_uio_cmd_cont(UIO_GET_GROOVY_STATUS);
   		if (req)
-  		{  		  			
+  		{  		  
+  			fpga_vga_frame_ant  = fpga_vga_frame;
+  		        fpga_vga_vcount_ant = fpga_vga_vcount;
+  					
   			fpga_vga_frame   = spi_w(0) | spi_w(0) << 16;  	  			
 	 		fpga_vga_vcount  = spi_w(0);  						  			
   			uint16_t word161 = spi_w(0);  			 
@@ -370,7 +385,12 @@ static void groovy_FPGA_status()
 				fpga_vga_vcount = (poc->PoC_interlaced && !fpga_vga_vcount) ? poc->PoC_V_Total - 1 : poc->PoC_V_Total;
 			}	
 			
-			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;											
+			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;	
+			
+			if (fpga_vga_frame_ant == fpga_vga_frame && fpga_vga_vcount < fpga_vga_vcount_ant) //hack fix for sppi delay
+			{
+				fpga_vga_frame++;
+			}										
   		}  		
   	}	
     	DisableIO(); 	
