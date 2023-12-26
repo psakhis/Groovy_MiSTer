@@ -33,7 +33,7 @@ Emulators available
   
      video_mister_enable = "true"
 
-     *Automatic frame delay for best latency results on latency options
+     *Automatic frame delay for best results on latency options
 
 
 
