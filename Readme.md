@@ -5,10 +5,10 @@ This core is a analog gpu for crt for subframe latency emulators
 
 Emulators available
 
-* GroovyMame
+### GroovyMame
 
   
-* Mednafen (for src details, see emu4crt fork https://github.com/psakhis/emu4crt)
+### Mednafen (for src details, see emu4crt fork https://github.com/psakhis/emu4crt)
   
   on mednafen.cfg set:
   
@@ -21,7 +21,7 @@ Emulators available
    mister.vsync 0 (automatic frame delay)
   
   
-* Retroarch (Dreamcast non working atm)
+### Retroarch (Dreamcast non working atm)
   
   on retroarch.cfg set:
   
