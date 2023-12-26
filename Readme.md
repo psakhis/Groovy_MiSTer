@@ -11,7 +11,7 @@ Emulators available
   
 ### Mednafen 
   for src details, see emu4crt fork https://github.com/psakhis/emu4crt
-  on mednafen.cfg set:
+  ,on mednafen.cfg set:
   
      mister.host "192.x.x.x"
   
