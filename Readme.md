@@ -32,8 +32,8 @@ Emulators available
      mister_lz4 = "true"
   
      video_mister_enable = "true"
-  
 
+     *Automatic frame delay for best latency results on latency options
 
 
 
