@@ -5,9 +5,10 @@ This core is a analog gpu for crt for subframe latency emulators
 
 Emulators available
 
-* Mednafen
-* Retroarch (dreamcast non working for now)
 * GroovyMame
+* Mednafen (for src details, see emu4crt fork https://github.com/psakhis/emu4crt)
+* Retroarch (dreamcast non working for now)
+
 
 
 
