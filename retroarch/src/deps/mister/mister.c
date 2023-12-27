@@ -154,15 +154,8 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
    if (orientation)
     sr_mode_flags = sr_mode_flags | SR_MODE_ROTATED;  
    
-   if (w == 853)
-    sr_set_user_mode(w, h, 0); //dc 
-    
-   if (w == 341)
-    sr_set_user_mode(w, h, 0); //pce fix 341x240 
-   
-   if (w == 284) 
-    sr_set_user_mode(w, h, 0); //sms fix 284x240 
-     
+
+   sr_set_user_mode(w, h, 0);   
    retSR = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_result);  
    
    printf("[INFO][MISTER] Video_SetSwitchres - result %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_result.width, swres_result.height,swres_result.vfreq, swres_result.x_scale, swres_result.y_scale, swres_result.is_stretched);		   
