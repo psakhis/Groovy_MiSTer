@@ -283,6 +283,7 @@ hps_ext hps_ext
 	.vga_vcount(vga_vcount), 
 	.vga_frame(vga_frame),
 	.vga_vblank(vblank_core),
+	.vga_f1(VGA_F1),
 	.vram_pixels(vram_pixels),
 	.vram_queue(vram_queue),
 	.vram_synced(vram_synced),
@@ -627,9 +628,8 @@ always @(posedge clk_sys) begin
 				  ddr_data_ch          <= 1'b0;	
 				  ddr_addr             <= 28'd0;			      		  
 				  vram_active          <= cmd_init ? 1'b1 : 1'b0;				  
-              if (!cmd_init) begin 		
-                {r_in, g_in, b_in} <= {8'hd1,8'h96,8'h28};	   // dark yellow, not cmd_init			  					 
-				    state 				  <= 8'd0;
+              if (!cmd_init) begin 	// reset to defaults	               	  					 
+					 state              <= 8'd90;				 
               end else						
 		        if (cmd_switchres && !ddr_busy && (!vga_frameskip || vblank_core)) begin	// request modeline (apply after blit)	
                 reset_switchres    <= 1'b1;				  
@@ -764,9 +764,9 @@ always @(posedge clk_sys) begin
 					 state              <= 8'd31;
 				  end
 				end
-				8'd31: // apply switch on vblank
+				8'd31: // apply switch on vblank (except at startup)
 				begin								     			
-				  if (vblank_core || vga_frame == 0) begin 								  				
+				  if (vblank_core || vga_frame == 0 || (vram_pixels == 0 && PoC_frame_ddr == 0)) begin 								  				
 				  // modeline  					
 					 PoC_H         <= ddr_data960[0  +:16];
 					 PoC_HFP       <= ddr_data960[16 +:08];
@@ -949,6 +949,35 @@ always @(posedge clk_sys) begin
 				  end	 
 				end  					
 				*/
+				8'd90:  // defaults
+				begin		                       
+             {r_in, g_in, b_in} <= {8'hd1,8'h96,8'h28};	   // dark yellow, not cmd_init
+				 PoC_H              <= 16'd256;
+				 PoC_HFP            <= 8'd10;
+				 PoC_HS             <= 8'd24;
+				 PoC_HBP            <= 8'd41;
+				 PoC_V              <= 16'd240;
+				 PoC_VFP            <= 8'd2;
+				 PoC_VS             <= 8'd3;
+				 PoC_VBP            <= 8'd16;
+				 PoC_pll_F_M0       <= 8'd4;
+				 PoC_pll_F_M1       <= 8'd4;
+				 PoC_pll_F_C0       <= 8'd3;
+				 PoC_pll_F_C1       <= 8'd2;
+				 PoC_pll_F_K        <= 32'd1182682725;
+				 PoC_ce_pix         <= 8'd16;
+	          PoC_interlaced     <= 1'b0;									 
+				 req_modeline       <= ~new_modeline; 			
+				 new_vmode          <= ~new_vmode;    	
+				 state              <= 8'd91;               				    								
+				end	
+				8'd91:  // reset
+				begin		
+				 req_modeline       <= ~new_modeline; 			
+				 new_vmode          <= ~new_vmode;    	
+				 vga_reset          <= 1'b1;
+				 state              <= 8'd0;   
+				end
 				default:
 				begin
 				  state <= 8'd0;

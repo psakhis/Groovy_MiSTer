@@ -418,7 +418,19 @@ void mister_ReceiveBlitACK(void)
   			mister_video.frameEcho = frameUDP;
   			memcpy(&mister_video.vcountEcho, &mister_video.bufferRecv[4],2);
 			memcpy(&mister_video.frameGPU, &mister_video.bufferRecv[6],4);
-			memcpy(&mister_video.vcountGPU, &mister_video.bufferRecv[10],2);  		  	
+			memcpy(&mister_video.vcountGPU, &mister_video.bufferRecv[10],2); 
+			memcpy(&mister_video.fpga_debug_bits, &mister_video.bufferRecv[12],1); 
+			
+			bitByte bits;  
+			bits.byte = mister_video.fpga_debug_bits;
+			mister_video.fpga_vram_ready     = bits.u.bit0;
+			mister_video.fpga_vram_end_frame = bits.u.bit1;
+			mister_video.fpga_vram_synced    = bits.u.bit2;   
+			mister_video.fpga_vga_frameskip  = bits.u.bit3;   
+			mister_video.fpga_vga_vblank     = bits.u.bit4;   		
+			mister_video.fpga_vga_f1         = bits.u.bit5;   
+			mister_video.fpga_vram_pixels    = bits.u.bit6;
+ 			mister_video.fpga_vram_queue     = bits.u.bit7; 		  	
 			//printf("ReceiveBlitACK %d %d / %d %d \n", frameEcho, vcountEcho, frameGPU, vcountGPU);
   		} 
   	}  		  	

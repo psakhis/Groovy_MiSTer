@@ -201,6 +201,7 @@ static uint8_t  fpga_vram_ready = 0;
 static uint8_t  fpga_vram_synced = 0;
 static uint8_t  fpga_vga_frameskip = 0;
 static uint8_t  fpga_vga_vblank = 0;
+static uint8_t  fpga_vga_f1 = 0;
 
 /*
 static uint32_t fpga_poc_frame_vram = 0;
@@ -324,6 +325,7 @@ static void groovy_FPGA_status_fast()
 		fpga_vram_synced    = bits.u.bit2;   
 		fpga_vga_frameskip  = bits.u.bit3;   
 		fpga_vga_vblank     = bits.u.bit4;   		
+		fpga_vga_f1         = bits.u.bit5;   		
 		
 		if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 		{
@@ -345,12 +347,12 @@ static void groovy_FPGA_status_fast()
 		}
 		
 		fpga_vram_queue = spi_w(0) | spi_w(0) << 16;
-		
+		/*
 		if (fpga_vga_frame_ant == fpga_vga_frame && fpga_vga_vcount < fpga_vga_vcount_ant) //hack fix for sppi delay
 		{
 			fpga_vga_frame++;
 		}
-		
+		*/
 		/*
 		fpga_poc_frame_vram = spi_w(0);
 		fpga_poc_subframe_px_vram = spi_w(0);
@@ -392,7 +394,8 @@ static void groovy_FPGA_status()
 			fpga_vram_end_frame = bits.u.bit1;
 			fpga_vram_synced    = bits.u.bit2;  
 			fpga_vga_frameskip  = bits.u.bit3;   
-			fpga_vga_vblank     = bits.u.bit4;   		
+			fpga_vga_vblank     = bits.u.bit4;  
+			fpga_vga_f1         = bits.u.bit5;  		
 			
 			if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 			{
@@ -414,11 +417,12 @@ static void groovy_FPGA_status()
 			}	
 			
 			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;	
-			
+			/*
 			if (fpga_vga_frame_ant == fpga_vga_frame && fpga_vga_vcount < fpga_vga_vcount_ant) //hack fix for sppi delay
 			{
 				fpga_vga_frame++;
-			}										
+			}
+			*/										
   		}  		
   	}	
     	DisableIO(); 	
@@ -678,11 +682,11 @@ static void sendStatus()
 
 static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 {          	
-	LOG(1, "[ACK_STATUS][DDR px=%d fr=%d bl=%d][BLIT fr=%d vsync=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, udp_frame, udp_vsync, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
+	LOG(1, "[ACK_STATUS][DDR px=%d fr=%d bl=%d][BLIT fr=%d vsync=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, udp_frame, udp_vsync, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
 	
 	int flags = 0;
 	flags |= MSG_CONFIRM;	
-	char sendbuf[12];
+	char sendbuf[13];
 	//echo
 	sendbuf[0] = udp_frame & 0xff;
 	sendbuf[1] = udp_frame >> 8;	
@@ -697,7 +701,20 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 	sendbuf[9] = fpga_vga_frame  >> 24;	
 	sendbuf[10] = fpga_vga_vcount & 0xff;
 	sendbuf[11] = fpga_vga_vcount >> 8;
-	sendto(sockfd, sendbuf, 12, flags, (struct sockaddr *)&clientaddr, clilen);								
+	//debug bits
+	bitByte bits;
+	bits.byte = 0;
+	bits.u.bit0 = fpga_vram_ready;
+	bits.u.bit1 = fpga_vram_end_frame;
+	bits.u.bit2 = fpga_vram_synced;
+	bits.u.bit3 = fpga_vga_frameskip;
+	bits.u.bit4 = fpga_vga_vblank;
+	bits.u.bit5 = fpga_vga_f1;
+	bits.u.bit6 = (fpga_vram_pixels > 0) ? 1 : 0;
+	bits.u.bit7 = (fpga_vram_queue > 0) ? 1 : 0;
+	sendbuf[12] = bits.byte;
+	
+	sendto(sockfd, sendbuf, 13, flags, (struct sockaddr *)&clientaddr, clilen);								
 	//send(sockfd, sendbuf, 12, flags);								
 }
 
@@ -750,12 +767,12 @@ static void setBlit(uint32_t udp_frame, uint16_t udp_vsync)
 	
 	if (doVerbose > 0 && doVerbose < 3)
 	{
-		LOG(1, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				
+		LOG(1, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				
 	}	
 	
 	if (!doVerbose && !fpga_vram_synced)
  	{
- 		LOG(0, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);		
+ 		LOG(0, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);		
  	}		 		
 	gettimeofday(&blitStart, NULL); 	
 }
@@ -949,15 +966,18 @@ void groovy_poll()
 			{ 
 				groovy_FPGA_status_fast();
 			}							
-     			LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			
+     			LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			
      			//LOG(3, "[NEW_STATUS p1=%d p2=%d p3=%d][POC_VRAM fr=%d px=%d bl=%d][POC_DDR fr=%d px=%d bl=%d]\n",fpga_punt1, fpga_punt2,fpga_punt3, fpga_poc_frame_vram,fpga_poc_subframe_px_vram,fpga_poc_subframe_bl_vram,fpga_poc_frame_ddr,fpga_poc_frame_px_ddr,fpga_poc_frame_bl_ddr ); 		      			
      		}  		    		
+     		
+     		//groovy_FPGA_status();					
+     		//LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			       		
      		
      		// ack vsync?	
      		if (doACKStatus && getNormalizedVCount(fpga_vga_frame, fpga_vga_vcount) >= getNormalizedVCount(poc->PoC_frame_recv, poc->PoC_frame_vsync))
 		{
 			doACKStatus = 0;
-			LOG(1, "[ACK_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
+			LOG(1, "[ACK_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
 			sendStatus();
 		}
 									
@@ -1032,7 +1052,7 @@ void groovy_poll()
 					case CMD_GET_STATUS:
 					{	
 						groovy_FPGA_status();					
-				       		LOG(1, "[CMD_GET_STATUS][%d][GPU vc=%d fr=%d fskip=%d vb=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", recvbufPtr[0], fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				       		
+				       		LOG(1, "[CMD_GET_STATUS][%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", recvbufPtr[0], fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				       		
 						sendStatus();							        				
 					}; break;
 					

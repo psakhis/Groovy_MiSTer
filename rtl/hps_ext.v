@@ -29,6 +29,7 @@ module hps_ext
 	input      [15:0] vga_vcount,	
 	input      [31:0] vga_frame,	
 	input             vga_vblank,	
+	input             vga_f1,
 	input      [23:0] vram_pixels,
 	input      [23:0] vram_queue,
 	input             vram_synced,
@@ -69,6 +70,19 @@ reg [15:0] io_dout;
 reg        dout_en = 0;
 reg  [4:0] byte_cnt;
 
+//snapshot
+reg [31:0] hps_vga_frame;
+reg [15:0] hps_vga_vcount;
+reg        hps_vga_vblank;
+reg        hps_vga_f1;
+reg        hps_vga_frameskip;
+reg [23:0] hps_vram_pixels;
+reg [23:0] hps_vram_queue;
+reg        hps_vram_synced;
+reg        hps_vram_end_frame;
+reg        hps_vram_ready;	
+
+
 always@(posedge clk_sys) begin
 	reg [15:0] cmd;
 	reg  [7:0] hps_rise_req = 0;
@@ -105,14 +119,26 @@ always@(posedge clk_sys) begin
 			case(cmd)
  
 				GET_GROOVY_STATUS: case(byte_cnt)				         
-							1: io_dout <= vga_frame[15:0];
-							2: io_dout <= vga_frame[31:16];							
-							3: io_dout <= vga_vcount; 
-							4: io_dout <= vram_pixels[15:0];
-							//5: io_dout <= {punt3,punt2,punt1, vga_vblank, vga_frameskip, vram_synced, vram_end_frame, vram_ready, vram_pixels[23:16]};							
-							5: io_dout <= {3'd0, vga_vblank, vga_frameskip, vram_synced, vram_end_frame, vram_ready, vram_pixels[23:16]};	
-							6: io_dout <= vram_queue[15:0];
-							7: io_dout <= {8'd0, vram_queue[23:16]};
+							1: 
+							begin 							   
+							   io_dout            <= vga_frame[15:0];
+								hps_vga_frame      <= vga_frame;
+								hps_vga_vcount     <= vga_vcount;
+								hps_vga_vblank     <= vga_vblank;
+								hps_vga_f1         <= vga_f1;
+								hps_vga_frameskip  <= vga_frameskip;
+								hps_vram_pixels    <= vram_pixels;
+								hps_vram_queue     <= vram_queue;
+								hps_vram_synced    <= vram_synced;
+								hps_vram_end_frame <= vram_end_frame;
+								hps_vram_ready     <= vram_ready;
+							end
+							2: io_dout <= hps_vga_frame[31:16];							
+							3: io_dout <= hps_vga_vcount; 
+							4: io_dout <= hps_vram_pixels[15:0];						
+							5: io_dout <= {2'd0, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready, hps_vram_pixels[23:16]};	
+							6: io_dout <= hps_vram_queue[15:0];
+							7: io_dout <= {8'd0, hps_vram_queue[23:16]};
 						/*	6: io_dout <= PoC_frame_vram[15:0];
 							7: io_dout <= PoC_subframe_px_vram[15:0];
 							8: io_dout <= PoC_subframe_bl_vram;

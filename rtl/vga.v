@@ -240,21 +240,19 @@ always@(posedge clk_sys) begin
  if (vga_reset || vga_frame_reset) begin	
 	vga_vblanks <= 16'd0;
  end  	
-	 
+ 
  if (vga_reset || vga_soft_reset) begin
    h_cnt <= 10'b0;
    _hs   <= 1'b1;
    hb    <= 1'b1;
  end 
  
+ if (!interlaced || vga_reset) field <= 1'b0;
+ 
  if (ce_pix && !vga_reset && !vga_soft_reset) begin	 			
 	
-	if (vram_active && h_cnt == H+HFP && v_cnt <= interlaced) vga_vblanks <= vga_vblanks + 1'd1;
-   //frame counter	
-   /*if (vram_active && h_cnt == H+HFP) begin	
-	  if (interlaced  && v_cnt <= 10'd1) vga_vblanks <= vga_vblanks + 1'd1;
-	  if (!interlaced && v_cnt == 10'd0) vga_vblanks <= vga_vblanks + 1'd1;	  
-	end*/
+	if (vram_active && h_cnt == H+HFP && v_cnt <= interlaced) vga_vblanks <= vga_vblanks + 1'd1; //frame counter
+	if (interlaced  && h_cnt == H+HFP && v_cnt <= interlaced) field       <= !field;	            // change field for interlaced   	
 	
 	if (!vga_reset && !vga_soft_reset) begin
 	  // horizontal counter	 
@@ -283,7 +281,7 @@ always@(posedge clk_sys) begin
    vb    <= 1'b1;	
  end
  
- if (!interlaced || vga_reset) field <= 1'b0;
+ //if (!interlaced || vga_reset) field <= 1'b0;
  
  if (vga_soft_reset) begin  
    v_cnt <= (interlaced && !field) ? V+10'd2 : V+10'd1;	 
@@ -295,9 +293,8 @@ always@(posedge clk_sys) begin
 							 
 	  // the vertical counter is processed at the begin of each hsync
 	  if (h_cnt == H+HFP) begin
-	    if (v_cnt >= V_total-1) begin 												 //V_total changes on interlaced field by 1
-		   v_cnt <= ((interlaced && field) || !interlaced) ? 1'b0 : 1'b1;  //field is not updated yet, on interlaced alternate counter
-         field <= interlaced ? !field : 1'b0;			                   //swap fields for nexts v_cnts
+	    if (v_cnt >= V_total-1) begin 												 //V_total changes on interlaced field by 1		
+		   v_cnt <= (interlaced && !field) ? 1'b1 : 1'b0;                  //vcount depends on field
 		 end else begin	
 		   v_cnt <= interlaced ? v_cnt + 10'd2 : v_cnt + 10'd1;		       //interlaced alternate 2 lines according to field			 
 		 end

@@ -40,6 +40,21 @@
 #define mister_MAX_BUFFER_HEIGHT 768
 #define mister_MAX_LZ4_BLOCK   61440
 
+typedef union
+{
+  struct
+  {
+    unsigned char bit0 : 1;
+    unsigned char bit1 : 1;
+    unsigned char bit2 : 1;
+    unsigned char bit3 : 1;
+    unsigned char bit4 : 1;
+    unsigned char bit5 : 1;
+    unsigned char bit6 : 1;
+    unsigned char bit7 : 1;   
+  }u;
+   uint8_t byte;
+} bitByte;
 
 void mister_CmdClose(void);
 void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames);
@@ -79,8 +94,19 @@ typedef struct mister_video_info
  
  bool firstField;
  
+ //FPGA debug bits 
+ uint8_t fpga_debug_bits;
+ uint8_t fpga_vram_end_frame;
+ uint8_t fpga_vram_ready;
+ uint8_t fpga_vram_synced;
+ uint8_t fpga_vga_frameskip;
+ uint8_t fpga_vga_vblank;
+ uint8_t fpga_vga_f1;
+ uint8_t fpga_vram_pixels;
+ uint8_t fpga_vram_queue;
+ 
  //UDP	
- char bufferRecv[12];
+ char bufferRecv[13];
  struct sockaddr_in ServerAddr;  
  int sockfd;                
   
