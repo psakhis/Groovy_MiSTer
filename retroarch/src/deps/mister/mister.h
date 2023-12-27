@@ -76,6 +76,7 @@ typedef struct mister_video_info
  uint16_t width;
  uint16_t height;
  uint16_t lines; //vtotal
+ uint16_t lines_padding; 
  double vfreq;
  uint8_t  interlaced;
  uint32_t widthTime; //usec

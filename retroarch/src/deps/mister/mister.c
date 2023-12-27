@@ -122,7 +122,8 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames)
    mister_video.lz4_compress = lz4_frames;
    mister_video.width = 0;	   	   
    mister_video.height = 0;
-   mister_video.lines = 0;	  	   
+   mister_video.lines = 0;	 
+   mister_video.lines_padding = 0;
    mister_video.vfreq = 0;	  	   
    mister_video.widthTime = 0;
    mister_video.frameTime = 0;  	  
@@ -140,25 +141,38 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames)
 }
 
 void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
-{  
+{    		
    if (w == mister_video.width && h == mister_video.height && vfreq == mister_video.vfreq)   
      return;     
    
    unsigned char retSR;
+   unsigned char retSR2;
    sr_mode swres_result;
+   sr_mode swres_user;
    int sr_mode_flags = 0; 
     
    if (h > 288) 
     sr_mode_flags = SR_MODE_INTERLACED;
  
    if (orientation)
-    sr_mode_flags = sr_mode_flags | SR_MODE_ROTATED;  
-   
-
-   sr_set_user_mode(w, h, 0);   
+    sr_mode_flags = sr_mode_flags | SR_MODE_ROTATED;     
+     
    retSR = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_result);  
-   
-   printf("[INFO][MISTER] Video_SetSwitchres - result %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_result.width, swres_result.height,swres_result.vfreq, swres_result.x_scale, swres_result.y_scale, swres_result.is_stretched);		   
+   if (retSR)
+   {
+    	printf("[INFO][MISTER] Video_SetSwitchres - result %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_result.width, swres_result.height,swres_result.vfreq, swres_result.x_scale, swres_result.y_scale, swres_result.is_stretched);		   
+   }
+   if ((swres_result.width != w || swres_result.height != h) && (w!=640 && h!=400)) //dosbox pure¿?
+   {
+   	sr_set_user_mode(w, h, 0); 
+   	retSR2 = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_user);    	
+   	if (retSR2 && swres_user.width == w && swres_user.height == h)
+   	{
+   		printf("[INFO][MISTER] Video_SetSwitchres - user %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_user.width, swres_user.height,swres_user.vfreq, swres_user.x_scale, swres_user.y_scale, swres_user.is_stretched);		   
+   		swres_result = swres_user;
+   		retSR = retSR2;
+   	}
+   }
    
    if (retSR && swres_result.width >= w && swres_result.height >= h) 
    {   	     	
@@ -174,9 +188,10 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
 	   uint16_t udp_vend = swres_result.vend;
 	   uint16_t udp_vtotal = swres_result.vtotal;
 	   uint8_t  udp_interlace = swres_result.interlace;  
-   
-    	   mister_video.width = udp_hactive;	   	   
-	   mister_video.height = udp_vactive;
+         
+	   mister_video.width = w;	   	   
+	   mister_video.height = h;	   
+	   mister_video.lines_padding = udp_vactive - h;
 	   mister_video.vfreq = vfreq;
 	   mister_video.lines = udp_vtotal;	  
 	   mister_video.interlaced = udp_interlace;
@@ -240,6 +255,8 @@ void mister_CmdBlit(char *bufferFrame, uint16_t vsync)
    mister_Send(&buffer[0], 9);               
    
    uint32_t bufferSize = (mister_video.interlaced == 0) ? mister_video.width * mister_video.height * 3 : mister_video.width * (mister_video.height >> 1) * 3;
+   
+   bufferSize += (mister_video.width * mister_video.lines_padding * 3) >>  mister_video.interlaced; //hack when switchres and core resolution not match
                     	   
    if (mister_video.lz4_compress == false)
     mister_SendMTU(&bufferFrame[0], bufferSize, 1470);
