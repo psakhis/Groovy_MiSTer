@@ -3,6 +3,15 @@
 ## General description
 This core is a analog gpu for crt for subframe latency emulators
 
+## Features
+- Very low latency (3ms tested with GILT on GroovyMAME with frame delay 8)
+- Full RGB888
+- Switch all modes (progressive/interlaced) reprogramming pll according to modeline
+- Connect with ethernet (can be work on wifi5/6 or Gb lan)
+- Menu options: scandoubler, video position, frameskip (uses framebuffer if emulator don't send frame at time), ..
+
+To install on your MiSTer you need replace MiSTer binary from /media/fat (core isn't official yet)
+  
 Emulators available
 
 ### GroovyMAME
