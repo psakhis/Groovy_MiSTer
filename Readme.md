@@ -8,16 +8,16 @@ Emulators available
 ### GroovyMAME
  for src details, see GroovyMAME fork by @Calamity https://github.com/antonioginer/GroovyMAME/tree/nogpu_0261
  ,to activate new MiSTer backend set on command line args:
-   -video mister 
-   -aspect 4:3 
-   -switchres 
-   -monitor arcade_15 
-   -mister_window 
-   -mister_ip "192.x.x.x" 
-   -mister_compression lz4 
-   -skip_gameinfo 
-   -syncrefresh 
-   -nothrottle
+    -video mister 
+    -aspect 4:3 
+    -switchres 
+    -monitor arcade_15 
+    -mister_window 
+    -mister_ip "192.x.x.x" 
+    -mister_compression lz4 
+    -skip_gameinfo 
+    -syncrefresh 
+    -nothrottle
    
 ### Mednafen 
   for src details, see emu4crt fork https://github.com/psakhis/emu4crt
