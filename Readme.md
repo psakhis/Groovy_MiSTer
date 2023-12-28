@@ -12,7 +12,7 @@ This core is a analog gpu for crt for subframe latency emulators
 
 To install on your MiSTer you need replace MiSTer binary from /media/fat (core isn't official yet)
   
-##Emulators available
+## Emulators available
 
 ### GroovyMAME
  for src details, see GroovyMAME fork by @Calamity https://github.com/antonioginer/GroovyMAME/tree/nogpu_0261
