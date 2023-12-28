@@ -8,6 +8,7 @@ Emulators available
 ### GroovyMAME
  for src details, see GroovyMAME fork by @Calamity https://github.com/antonioginer/GroovyMAME/tree/nogpu_0261
  ,to activate new MiSTer backend set on command line args:
+  
     -video mister 
     -aspect 4:3 
     -switchres 
