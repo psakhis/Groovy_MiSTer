@@ -39,7 +39,9 @@ module hps_ext
 	input             reset_switchres,
    output reg        cmd_switchres = 0,		
 	input             reset_blit,
-   output reg        cmd_blit = 0/*,    DEBUG
+   output reg        cmd_blit = 0,
+   output reg        cmd_logo = 0
+	/*,    DEBUG
 	input      [23:0] PoC_frame_vram,
    input      [23:0] PoC_subframe_px_vram,	
 	input      [15:0] PoC_subframe_bl_vram,
@@ -58,13 +60,14 @@ wire io_strobe = EXT_BUS[33];
 wire io_enable = EXT_BUS[34];
 
 localparam EXT_CMD_MIN = GET_GROOVY_STATUS;
-localparam EXT_CMD_MAX = SET_BLIT;
+localparam EXT_CMD_MAX = SET_LOGO;
 
 localparam GET_GROOVY_STATUS = 'hf0;
 localparam GET_GROOVY_HPS    = 'hf1;
 localparam SET_INIT          = 'hf2;
 localparam SET_SWITCHRES     = 'hf3;
 localparam SET_BLIT          = 'hf4;
+localparam SET_LOGO          = 'hf5;
 
 reg [15:0] io_dout;
 reg        dout_en = 0;
@@ -114,6 +117,7 @@ always@(posedge clk_sys) begin
 			if(io_din == SET_INIT)          io_dout <= hps_rise_req; 		
 			if(io_din == SET_SWITCHRES)     io_dout <= hps_rise_req; 					
 			if(io_din == SET_BLIT)          io_dout <= hps_rise_req; 					
+			if(io_din == SET_LOGO)          io_dout <= hps_rise_req; 					
 		end else begin
 	      
 			case(cmd)
@@ -162,6 +166,10 @@ always@(posedge clk_sys) begin
 				SET_BLIT: case(byte_cnt)
 							1: cmd_blit <= io_din[0];			
 						endcase		
+				
+		      SET_LOGO: case(byte_cnt)
+							1: cmd_logo <= io_din[0];			
+						endcase			
 									
 			endcase
 		end

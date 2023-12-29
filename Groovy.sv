@@ -266,7 +266,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 wire [35:0] EXT_BUS;
 reg  reset_switchres = 0, vga_frameskip = 0, reset_blit = 0, auto_blit = 0, auto_blit_fskip = 0; 
-wire cmd_init, cmd_switchres, cmd_blit;
+wire cmd_init, cmd_switchres, cmd_blit, cmd_logo;
 /*
 reg punt1 = 0;
 reg punt2 = 0;
@@ -293,7 +293,9 @@ hps_ext hps_ext
 	.reset_switchres(reset_switchres),
 	.cmd_switchres(cmd_switchres),
 	.reset_blit(reset_blit),
-	.cmd_blit(cmd_blit)/*,
+	.cmd_blit(cmd_blit),
+	.cmd_logo(cmd_logo)
+	/*,
 	.PoC_frame_vram(PoC_frame_vram),
    .PoC_subframe_px_vram(PoC_subframe_px_vram),	
 	.PoC_subframe_bl_vram(PoC_subframe_bl_vram),
@@ -543,7 +545,7 @@ always @(posedge clk_sys) begin
 		  
 		  
         // Button A for testing 
-        if (joy[4]) begin
+      /*  if (joy[4]) begin
 		     state <= 8'd0;
 		     case (state_4)  
 		      8'd0:                             // debug code
@@ -572,14 +574,14 @@ always @(posedge clk_sys) begin
 				 new_vmode       <= ~new_vmode;    // notify to osd	
 				 
 				 state_4               <= 8'd1;
-				  */
+				  
 				end				
 				8'd1:                             // debug code
 			 	begin	
-			/*	
+				
               new_vmode       <= ~new_vmode;				          
 				  state_4         <= 8'd0;				  						 
-         */				  
+         				  
 				end				
 	         default:
 				begin
@@ -589,7 +591,7 @@ always @(posedge clk_sys) begin
 		     endcase	
 			  
 		  // Normal proces
-		  end else begin		     			   
+		  end else*/ begin		     			   
             
 	        //case -> only evaluates first match (break implicit), if not then default	  
 			  case (state)
@@ -651,7 +653,7 @@ always @(posedge clk_sys) begin
 				  end else begin			    
 				    auto_blit_fskip    <= 1'b0;
 					 if (PoC_frame_ddr <= PoC_frame_vram) vga_frameskip <= 1'b0;
-				    if (hps_frameskip && PoC_frame_vram != 0 && PoC_frame_ddr <= vga_frame) begin // frameskip?				  				  					 			  				  								  				  
+				    if ((cmd_logo || hps_frameskip) && PoC_frame_vram != 0 && PoC_frame_ddr <= vga_frame) begin // frameskip?				  				  					 			  				  								  				  
 				      if (vga_vcount <= PoC_interlaced && PoC_subframe_px_vram == 0) begin   // next frame not started to blit
 				        state 			<= 8'd22;						    					 
 					   end else
