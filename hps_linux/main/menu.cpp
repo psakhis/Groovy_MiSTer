@@ -2226,7 +2226,7 @@ void HandleUI(void)
 						if (is_x86() || is_pcxt()) strcpy(Selected_tmp, x86_get_image_path(ioctl_index));
 						if (is_psx() && (ioctl_index == 2 || ioctl_index == 3)) fs_Options |= SCANO_SAVES;
 
-						if (is_pce() || is_megacd() || is_x86() || (is_psx() && !(fs_Options & SCANO_SAVES)) || is_neogeo())
+						if (is_saturn() || is_pce() || is_megacd() || is_x86() || (is_psx() && !(fs_Options & SCANO_SAVES)) || is_neogeo())
 						{
 							//look for CHD too
 							if (!strcasestr(ext, "CHD"))
@@ -2333,6 +2333,12 @@ void HandleUI(void)
 								}
 								else
 								{
+									if (!bit && is_uneon())
+									{
+										x86_ide_set();
+										menustate = MENU_NONE1;
+									}
+
 									if (is_megacd())
 									{
 										if (!bit) mcd_set_image(0, "");
@@ -2416,7 +2422,7 @@ void HandleUI(void)
 				}
 				else if (is_n64())
 				{
-					if (!n64_rom_tx(selPath, idx)) Info("failed to load ROM");
+					if (!n64_rom_tx(selPath, idx, load_addr)) Info("failed to load ROM");
 				}
 				else
 				{
@@ -2462,7 +2468,7 @@ void HandleUI(void)
 			char idx = user_io_ext_idx(selPath, fs_pFileExt) << 6 | ioctl_index;
 			if (addon[0] == 'f' && addon[1] != '1') process_addon(addon, idx);
 
-			else if (is_x86() || is_pcxt())
+			else if (is_x86() || is_pcxt() || (is_uneon() && idx >= 2))
 			{
 				x86_set_image(ioctl_index, selPath);
 			}
@@ -6876,7 +6882,7 @@ void HandleUI(void)
 
 		if (isXmlName(Selected_tmp))
 		{
-			// find the RBF file from the XML		
+			// find the RBF file from the XML
 			xml_load(getFullPath(Selected_tmp));
 		}
 		else
@@ -7219,6 +7225,11 @@ void MenuHide()
 {
 	menustate = MENU_NONE1;
 	HandleUI();
+}
+
+int menu_present()
+{
+	return (menustate != MENU_NONE1) && (menustate != MENU_NONE2);
 }
 
 void Info(const char *message, int timeout, int width, int height, int frame)

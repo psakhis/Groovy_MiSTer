@@ -37,7 +37,7 @@
 #include "../../fpga_io.h"
 #include "../../spi.h"
 
-#include "zstd.h"
+#include "logo.h"
 #include "lz4.h"
 #include "pll.h"
 
@@ -47,6 +47,7 @@
 #define UIO_SET_GROOVY_INIT      0xf2
 #define UIO_SET_GROOVY_SWITCHRES 0xf3
 #define UIO_SET_GROOVY_BLIT      0xf4
+#define UIO_SET_GROOVY_LOGO      0xf5
 
 // FPGA DDR shared
 #define BASEADDR 0x30000000
@@ -220,6 +221,22 @@ static void initDDR()
 	memset(&buffer[0],0x00,0xff);	  
 }
 
+static void loadLogo()
+{	
+       uint32_t logoPixels = 256 * 240;	
+       uint32_t logoSize = logoPixels * 3;	
+       memcpy(&buffer[HEADER_OFFSET], (char*)&logoImage[0], logoSize);
+                          	                       	 			         	      	                                         
+       buffer[0] = (1) & 0xff;  
+       buffer[1] = (1 >> 8) & 0xff;	       	  
+       buffer[2] = (1 >> 16) & 0xff;    
+       buffer[3] = (logoPixels) & 0xff;  
+       buffer[4] = (logoPixels >> 8) & 0xff;	       	  
+       buffer[5] = (logoPixels >> 16) & 0xff;      	 			         	      	                     
+       buffer[6] = (1) & 0xff; 	
+       buffer[7] = (1 >> 8) & 0xff;	       	                   	        
+}
+
 static void initVerboseFile()
 {
 	fp = fopen ("/tmp/groovy.log", "wt"); 
@@ -259,8 +276,7 @@ static void groovy_FPGA_hps()
 	else doVerbose = 0;
 	
 	printf("doVerbose %d\n", doVerbose);
-	initVerboseFile();	
-			 
+	initVerboseFile();				 
 	
 	if (bits.u.bit2 == 1 && bits.u.bit3 == 0 && bits.u.bit4 == 0) 
 	{
@@ -463,6 +479,17 @@ static void groovy_FPGA_init(int cmd)
 	DisableIO();
 }
 
+static void groovy_FPGA_logo(int cmd)
+{	
+    uint16_t req = 0;
+    while (req == 0)
+    {
+	req = spi_uio_cmd_cont(UIO_SET_GROOVY_LOGO);	
+	if (req) spi_w(cmd);
+    }	
+    DisableIO();        
+}
+
 static void groovy_FPGA_blit(uint32_t pixels, uint16_t numBlit)
 {          	
     poc->PoC_pixels_ddr = pixels;    
@@ -661,8 +688,13 @@ static void setClose()
 			printf("disconnect error\n");        						
 		}*/
 		isConnected = 0;
-	}		
-	//groovy_udp_server_stop();	
+	}	
+	
+	// load LOGO
+	loadLogo();	
+	groovy_FPGA_init(1);    	
+	groovy_FPGA_blit(); 
+	groovy_FPGA_logo(1);			
 }
 
 static void sendStatus()
@@ -726,6 +758,7 @@ static void setInit(uint8_t compression)
 	doAlwaysStatus = 0;
 	poc = (PoC_type *) calloc(1, sizeof(PoC_type));
 	initDDR();
+	groovy_FPGA_logo(0);
 	groovy_FPGA_init(0);
 	groovy_FPGA_init(1);																	
 	isBlitting = 0;		
@@ -748,6 +781,8 @@ static void setInit(uint8_t compression)
 	{
 		initVerboseFile();
 	}
+	
+	
 		
 }
 
@@ -932,14 +967,20 @@ static void groovy_start()
 	groovy_FPGA_hps();   
 	
 	// map DDR 		
-	groovy_map_ddr();	    	
+	groovy_map_ddr();			
         	
     	// UDP Server     	
 	groovy_udp_server_init();   	    	    	    	    	           	    	
     	    	    	
     	// reset fpga    
     	groovy_FPGA_init(0);    
-    	    	
+    	
+    	// load LOGO
+	loadLogo();	
+	groovy_FPGA_init(1);    	
+	groovy_FPGA_blit(); 
+	groovy_FPGA_logo(1); 
+	    	
     	printf("Groovy-Server 0.1 started\n");    			    	                          		
 }
 

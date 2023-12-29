@@ -19,6 +19,10 @@
 // SNES  support
 #include "support/snes/snes.h"
 
+// N64  support
+#include "support/n64/n64.h"
+#include "support/n64/n64_joy_emu.h"
+
 // NeoGeo  support
 #include "support/neogeo/neogeo_loader.h"
 #include "support/neogeo/neogeocd.h"
@@ -47,6 +51,7 @@
 
 // N64 support
 #include "support/n64/n64.h"
+#include "support/n64/n64_joy_emu.h"
 
 // GROOVY support
 #include "support/groovy/groovy.h"
