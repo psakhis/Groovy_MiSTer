@@ -208,7 +208,7 @@ localparam CONF_STR = {
    "P1O[20:17],Analog Video H-Pos,0,-1,-2,-3,-4,-5,-6,-7,8,7,6,5,4,3,2,1;",
    "P1O[24:21],Analog Video V-Pos,0,-1,-2,-3,-4,-5,-6,-7,8,7,6,5,4,3,2,1;",   
 	"P1-;",
-	"P1O[30],Auto Frameskip,Off,On;",
+	"P1O[30],Volatile Framebuffer,Off,On;",
 	"-;",
 	"P2,Server Settings (restart);",
 	"P2O[26:25],Verbose,Off,1,2,3;",
@@ -237,7 +237,8 @@ wire [4:0]  crop_offset = status[16:12] < 9 ? {status[16:12]} : ( status[16:12] 
 
 wire [1:0]	hps_verbose = status[26:25];
 wire [2:0]	hps_blit = status[29:27];
-wire      	hps_frameskip = status[30];
+wire      	hps_volatile_fb = status[30];
+assign    	hps_frameskip = !hps_volatile_fb;
 
 wire [31:0] status;
 wire [31:0] joy;

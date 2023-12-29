@@ -186,7 +186,7 @@ static uint8_t doBlocks = 0;
 static uint8_t doAlwaysStatus = 0;
 static uint8_t doACKStatus = 0;
 static uint8_t isConnected = 0; 
-static unsigned long isTimeout = 0; 
+//static unsigned long isTimeout = 0; 
 
 /* FPGA HPS EXT STATUS */
 
@@ -966,20 +966,20 @@ static void groovy_start()
 	// get HPS Server Settings
 	groovy_FPGA_hps();   
 	
+	// reset fpga    
+    	groovy_FPGA_init(0);    	    	
+	
 	// map DDR 		
-	groovy_map_ddr();			
-        	
-    	// UDP Server     	
-	groovy_udp_server_init();   	    	    	    	    	           	    	
-    	    	    	
-    	// reset fpga    
-    	groovy_FPGA_init(0);    
-    	
-    	// load LOGO
+	groovy_map_ddr();
+	
+	// load LOGO
 	loadLogo();	
 	groovy_FPGA_init(1);    	
 	groovy_FPGA_blit(); 
-	groovy_FPGA_logo(1); 
+	groovy_FPGA_logo(1); 			
+        	
+    	// UDP Server     	
+	groovy_udp_server_init();   	    	    	    	    	           	    	    	    	    	    	        	    	
 	    	
     	printf("Groovy-Server 0.1 started\n");    			    	                          		
 }
@@ -1037,7 +1037,7 @@ void groovy_poll()
 									
 		if (len > 0) 
 		{    	
-			isTimeout = GetTimer(UDP_INACTIVITY);							
+			//isTimeout = GetTimer(UDP_INACTIVITY);							
 			if (!isBlitting)
 			{				
 	    			switch (recvbufPtr[0]) 
@@ -1147,7 +1147,7 @@ void groovy_poll()
 				}																				
 			}							
 		} 
-		else
+		/*else
 		{
 			
 			if (isConnected && CheckTimer(isTimeout))			
@@ -1157,7 +1157,7 @@ void groovy_poll()
 			}
 			
 		}
-									       				
+		*/							       				
 		if (!isBlitting)		
 		{						
 			break;
