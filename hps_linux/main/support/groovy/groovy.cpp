@@ -57,7 +57,6 @@
 #define BUFFERSIZE (720 * 576 * 3) + HEADER_LEN
 
 // UDP server 
-#define UDP_INACTIVITY 8000
 #define UDP_PORT 32100
 #define CMD_CLOSE 1
 #define CMD_INIT 2
@@ -66,8 +65,10 @@
 #define CMD_GET_STATUS 5
 #define CMD_BLIT_VSYNC 6
 
+#define LOGO_TIMER 16
+
 //https://stackoverflow.com/questions/64318331/how-to-print-logs-on-both-console-and-file-in-c-language
-#define LOG_TIMER 16
+#define LOG_TIMER 25
 static struct timeval logTS, logTS_ant, blitStart, blitStop; 
 static int doVerbose = 0; 
 static int difUs = 0;
@@ -162,6 +163,14 @@ static struct sockaddr_in clientaddr;
 static socklen_t clilen = sizeof(struct sockaddr); 
 static char recvbuf[65536] = { 0 };
 
+/* Logo */
+static int groovyLogo = 0;
+static int logoX = 0;
+static int logoY = 0;
+static int logoSignX = 0;
+static int logoSignY = 0;
+static unsigned long logoTime = 0;
+
 static PoC_type *poc;
 static uint8_t *map = 0;    
 static uint8_t* buffer;
@@ -186,7 +195,6 @@ static uint8_t doBlocks = 0;
 static uint8_t doAlwaysStatus = 0;
 static uint8_t doACKStatus = 0;
 static uint8_t isConnected = 0; 
-//static unsigned long isTimeout = 0; 
 
 /* FPGA HPS EXT STATUS */
 
@@ -204,37 +212,9 @@ static uint8_t  fpga_vga_frameskip = 0;
 static uint8_t  fpga_vga_vblank = 0;
 static uint8_t  fpga_vga_f1 = 0;
 
-/*
-static uint32_t fpga_poc_frame_vram = 0;
-static uint32_t fpga_poc_subframe_px_vram = 0;
-static uint16_t fpga_poc_subframe_bl_vram = 0;
-static uint32_t fpga_poc_frame_ddr = 0;
-static uint32_t fpga_poc_frame_px_ddr = 0;
-static uint16_t fpga_poc_frame_bl_ddr = 0;
-static uint8_t fpga_punt1 = 0;
-static uint8_t fpga_punt2 = 0;
-static uint8_t fpga_punt3 = 0;
-*/
-
 static void initDDR()
 {
 	memset(&buffer[0],0x00,0xff);	  
-}
-
-static void loadLogo()
-{	
-       uint32_t logoPixels = 256 * 240;	
-       uint32_t logoSize = logoPixels * 3;	
-       memcpy(&buffer[HEADER_OFFSET], (char*)&logoImage[0], logoSize);
-                          	                       	 			         	      	                                         
-       buffer[0] = (1) & 0xff;  
-       buffer[1] = (1 >> 8) & 0xff;	       	  
-       buffer[2] = (1 >> 16) & 0xff;    
-       buffer[3] = (logoPixels) & 0xff;  
-       buffer[4] = (logoPixels >> 8) & 0xff;	       	  
-       buffer[5] = (logoPixels >> 16) & 0xff;      	 			         	      	                     
-       buffer[6] = (1) & 0xff; 	
-       buffer[7] = (1 >> 8) & 0xff;	       	                   	        
 }
 
 static void initVerboseFile()
@@ -362,25 +342,7 @@ static void groovy_FPGA_status_fast()
 			}			
 		}
 		
-		fpga_vram_queue = spi_w(0) | spi_w(0) << 16;
-		/*
-		if (fpga_vga_frame_ant == fpga_vga_frame && fpga_vga_vcount < fpga_vga_vcount_ant) //hack fix for sppi delay
-		{
-			fpga_vga_frame++;
-		}
-		*/
-		/*
-		fpga_poc_frame_vram = spi_w(0);
-		fpga_poc_subframe_px_vram = spi_w(0);
-		fpga_poc_subframe_bl_vram = spi_w(0);
-		fpga_poc_frame_ddr = spi_w(0);
-		fpga_poc_frame_px_ddr = spi_w(0);
-		fpga_poc_frame_bl_ddr = spi_w(0);
-		
-		fpga_punt1    = bits.u.bit5;
-		fpga_punt2    = bits.u.bit6;
-		fpga_punt3    = bits.u.bit7;						
-		*/
+		fpga_vram_queue = spi_w(0) | spi_w(0) << 16;		
   	}  		  		
     	DisableIO(); 	
 }
@@ -432,13 +394,7 @@ static void groovy_FPGA_status()
 				}			
 			}	
 			
-			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;	
-			/*
-			if (fpga_vga_frame_ant == fpga_vga_frame && fpga_vga_vcount < fpga_vga_vcount_ant) //hack fix for sppi delay
-			{
-				fpga_vga_frame++;
-			}
-			*/										
+			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;													
   		}  		
   	}	
     	DisableIO(); 	
@@ -460,8 +416,7 @@ static void groovy_FPGA_blit()
     uint16_t req = 0;
     EnableIO();	
     while (req == 0)
-    {
-	//req = spi_uio_cmd_cont(UIO_SET_GROOVY_BLIT);		
+    {		
 	req = fpga_spi_fast(UIO_SET_GROOVY_BLIT);	
 	if (req) spi_w(1);
     }	
@@ -490,6 +445,62 @@ static void groovy_FPGA_logo(int cmd)
     DisableIO();        
 }
 
+static void loadLogo(int logoStart)
+{	  
+	if (logoStart)
+	{
+		buffer[0] = (1) & 0xff;  
+	 	buffer[1] = (1 >> 8) & 0xff;	       	  
+	     	buffer[2] = (1 >> 16) & 0xff;    
+	  	buffer[3] = (61440) & 0xff;  
+	   	buffer[4] = (61440 >> 8) & 0xff;	       	  
+	 	buffer[5] = (61440 >> 16) & 0xff;      	 			         	      	                     
+		buffer[6] = (1) & 0xff; 	
+		buffer[7] = (1 >> 8) & 0xff;					
+	}
+
+	if (CheckTimer(logoTime))    	
+	{		
+		groovy_FPGA_status_fast();
+		if (fpga_vga_vcount == 241)
+		{								 		
+			memset(&buffer[HEADER_OFFSET], 0x00, 184320);   	         		   	         				
+		       	int z=0;		       	
+		       	int offset = (256 * logoY * 3) + (logoX * 3); 
+		       	for (int i=0; i<64; i++)
+		       	{       				       		
+		       		memcpy(&buffer[HEADER_OFFSET+offset], (char*)&logoImage[z], 192);
+		       		offset += 256 * 3;		       		
+		       		z += 64 * 3;
+		       	}              		       			       		                          	                       	 			         	      	                                         		       		       
+		       	logoTime = GetTimer(LOGO_TIMER);   
+		       	
+		       	logoX = (logoSignX) ? logoX - 1 : logoX + 1;
+		       	logoY = (logoSignY) ? logoY - 2 : logoY + 2;	       		       	
+		       	
+		       	if (logoX >= 192 && !logoSignX)
+		       	{
+		       		logoSignX = !logoSignX;		       		       			       		
+		       	}    	                   	        
+		       	
+		       	if (logoY >= 176 && !logoSignY)
+		       	{	       		
+		       		logoSignY = !logoSignY;
+		       	}    
+		       	
+		       	if (logoX <= 0 && logoSignX)
+		       	{
+		       		logoSignX = !logoSignX;		       		       			       		
+		       	}    	                   	        
+		       	
+		       	if (logoY <= 0 && logoSignY)
+		       	{	       		
+		       		logoSignY = !logoSignY;
+		       	}    		       			       			     
+		}                   	        	       	
+	}
+}
+
 static void groovy_FPGA_blit(uint32_t pixels, uint16_t numBlit)
 {          	
     poc->PoC_pixels_ddr = pixels;    
@@ -507,13 +518,11 @@ static void groovy_FPGA_blit(uint32_t pixels, uint16_t numBlit)
     	
     	buffer[0] = (poc->PoC_frame_ddr) & 0xff;  
     	buffer[1] = (poc->PoC_frame_ddr >> 8) & 0xff;	       	  
-    	buffer[2] = (poc->PoC_frame_ddr >> 16) & 0xff;    
-    	//buffer[3] = (poc->PoC_frame_ddr >> 24) & 0xff;               // it's useless 32 -> 24?     
+    	buffer[2] = (poc->PoC_frame_ddr >> 16) & 0xff;        	  
     	
     	groovy_FPGA_blit();    
     }	           		         	      	             
-    
-    //groovy_FPGA_blit();    
+       
 }
 
 
@@ -521,24 +530,6 @@ static uint32_t getNormalizedVCount(uint32_t frame, uint16_t vcount)
 {	
 	return (frame * poc->PoC_V_Total) + vcount;
 }
-
-/*
-static unsigned long getTimerStatus(uint32_t actual_frame, uint32_t desired_frame, uint16_t actual_vcount, uint16_t desired_vcount)
-{
-	unsigned long ret = 0;		
-	int dif_lines = getNormalizedVCount(desired_frame, desired_vcount) - getNormalizedVCount(actual_frame, actual_vcount);		
-	if (dif_lines <= 0)
-	{
-		ret = GetTimer(0);
-	}
-	else
-	{		
-		uint64_t ts = floor(poc->PoC_width_time * (double) dif_lines);				
-		ret = GetTimer(ts);
-	}
-	return ret;
-}
-*/
 
 static void setSwitchres()
 {               	   	 	    
@@ -572,8 +563,7 @@ static void setSwitchres()
     poc->PoC_V_Total = udp_vtotal;
                                                                                             			      			      			       
     LOG(1,"[Modeline] %f %d %d %d %d %d %d %d %d %s\n",udp_pclock,udp_hactive,udp_hbegin,udp_hend,udp_htotal,udp_vactive,udp_vbegin,udp_vend,udp_vtotal,udp_interlace?"interlace":"progressive");
-       	                     	                       	                          
-    //poc->PoC_frame_ddr = 0;        	                      			       
+       	                     	                       	                                    	                      			       
     poc->PoC_pixels_ddr = 0;
     poc->PoC_H = udp_hactive;
     poc->PoC_HFP = udp_hbegin - udp_hactive;
@@ -658,43 +648,26 @@ static void setSwitchres()
     groovy_FPGA_switchres();                 
 }
 
-/*
-static void groovy_udp_server_stop()
-{
-	LOG(1, "[UDP][SERVER][%s]\n", "END");
-	close(sockfd);		  
-	groovyServer = 1;
-}
-*/
 
 static void setClose()
 {          				
+	groovy_FPGA_init(0);	
 	isBlitting = 0;		
 	blitCompression = 0;
 	doAlwaysStatus = 0;
 	doACKStatus = 0;
 	LZ4offset = 0;
 	free(poc);	
-	initDDR();
-	groovy_FPGA_init(0);
-	
-	if (isConnected)
-	{
-		/*memset(&clientaddr, 0, clilen);
-    		clientaddr.sin_family = AF_UNSPEC;   //disconnect
-    		    		
-		if (connect(sockfd, (struct sockaddr *)&clientaddr, clilen) < 0) //udp connected
-		{
-			printf("disconnect error\n");        						
-		}*/
-		isConnected = 0;
-	}	
+	initDDR();	
+	isConnected = 0;		
 	
 	// load LOGO
-	loadLogo();	
+	loadLogo(1);		
 	groovy_FPGA_init(1);    	
 	groovy_FPGA_blit(); 
-	groovy_FPGA_logo(1);			
+	groovy_FPGA_logo(1);
+	groovyLogo = 1;	
+	
 }
 
 static void sendStatus()
@@ -708,8 +681,7 @@ static void sendStatus()
 	sendbuf[3] = fpga_vga_frame  >> 8;	
 	sendbuf[4] = fpga_vga_frame  >> 16;	
 	sendbuf[5] = fpga_vga_frame  >> 24;	
-	sendto(sockfd, sendbuf, 6, flags, (struct sockaddr *)&clientaddr, clilen);								
-	//send(sockfd, sendbuf, 6, flags);								
+	sendto(sockfd, sendbuf, 6, flags, (struct sockaddr *)&clientaddr, clilen);															
 }
 
 static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
@@ -746,8 +718,7 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 	bits.u.bit7 = (fpga_vram_queue > 0) ? 1 : 0;
 	sendbuf[12] = bits.byte;
 	
-	sendto(sockfd, sendbuf, 13, flags, (struct sockaddr *)&clientaddr, clilen);								
-	//send(sockfd, sendbuf, 12, flags);								
+	sendto(sockfd, sendbuf, 13, flags, (struct sockaddr *)&clientaddr, clilen);																
 }
 
 static void setInit(uint8_t compression)
@@ -761,15 +732,11 @@ static void setInit(uint8_t compression)
 	groovy_FPGA_logo(0);
 	groovy_FPGA_init(0);
 	groovy_FPGA_init(1);																	
-	isBlitting = 0;		
+	isBlitting = 0;	
+	groovyLogo = 0;	
 	
 	if (!isConnected)
-	{		
-		/*		    							
-		if (connect(sockfd, (struct sockaddr *)&clientaddr, clilen) < 0) //udp connected
-		{
-			printf("connect error\n");        						
-		}*/
+	{				
 		char hoststr[NI_MAXHOST];
 		char portstr[NI_MAXSERV];
 		getnameinfo((struct sockaddr *)&clientaddr, clilen, hoststr, sizeof(hoststr), portstr, sizeof(portstr), NI_NUMERICHOST | NI_NUMERICSERV);
@@ -780,10 +747,7 @@ static void setInit(uint8_t compression)
 	if (doVerbose)
 	{
 		initVerboseFile();
-	}
-	
-	
-		
+	}				
 }
 
 static void setBlit(uint32_t udp_frame, uint16_t udp_vsync)
@@ -944,13 +908,7 @@ static void groovy_udp_server_init()
 	{
         	printf("Error so_reuseaddr\n");        	
         } 
-        /*            	                           
-        int beTrue = 1;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (void*)&beTrue, sizeof(beTrue)) < 0)
-	{
-        	printf("Error so_reuseport\n");        	
-        }                             
-        */                      	                         	         
+                            	                         	         
     	if (bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
     	{
     		printf("bind error\n");        	
@@ -972,11 +930,12 @@ static void groovy_start()
 	// map DDR 		
 	groovy_map_ddr();
 	
-	// load LOGO
-	loadLogo();	
-	groovy_FPGA_init(1);    	
+	// load LOGO	
+	loadLogo(1);
+	groovy_FPGA_init(1);    		
 	groovy_FPGA_blit(); 
 	groovy_FPGA_logo(1); 			
+	groovyLogo = 1;		
         	
     	// UDP Server     	
 	groovy_udp_server_init();   	    	    	    	    	           	    	    	    	    	    	        	    	
@@ -1007,13 +966,9 @@ void groovy_poll()
 			{ 
 				groovy_FPGA_status_fast();
 			}							
-     			LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			
-     			//LOG(3, "[NEW_STATUS p1=%d p2=%d p3=%d][POC_VRAM fr=%d px=%d bl=%d][POC_DDR fr=%d px=%d bl=%d]\n",fpga_punt1, fpga_punt2,fpga_punt3, fpga_poc_frame_vram,fpga_poc_subframe_px_vram,fpga_poc_subframe_bl_vram,fpga_poc_frame_ddr,fpga_poc_frame_px_ddr,fpga_poc_frame_bl_ddr ); 		      			
+     			LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			     			
      		}  		    		
-     		
-     		//groovy_FPGA_status();					
-     		//LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			       		
-     		
+     		     		     		
      		// ack vsync?	
      		if (doACKStatus && getNormalizedVCount(fpga_vga_frame, fpga_vga_vcount) >= getNormalizedVCount(poc->PoC_frame_recv, poc->PoC_frame_vsync))
 		{
@@ -1023,21 +978,10 @@ void groovy_poll()
 		}
 									
 		recvbufPtr = (isBlitting && !blitCompression) ? (char *) (buffer + HEADER_OFFSET + poc->PoC_bytes_recv) : (char *) &recvbuf[LZ4offset];
-		
-		if (!isConnected)
-		{
-			len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);	
-			//len = recv(sockfd, recvbufPtr, 65536, 0);	
-		}
-		else
-		{
-			len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);	
-			//len = recv(sockfd, recvbufPtr, 65536, 0);	
-		}								
+		len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);			
 									
 		if (len > 0) 
-		{    	
-			//isTimeout = GetTimer(UDP_INACTIVITY);							
+		{    										
 			if (!isBlitting)
 			{				
 	    			switch (recvbufPtr[0]) 
@@ -1130,7 +1074,7 @@ void groovy_poll()
 					{
 						case 0: 
 						{
-							setBlitRaw(len); //memcpy(&buffer[HEADER_OFFSET + poc->PoC_bytes_recv], &recvbufPtr[0], len);
+							setBlitRaw(len); 
 						}
 						break; 	
 						case 1: 
@@ -1147,24 +1091,19 @@ void groovy_poll()
 				}																				
 			}							
 		} 
-		/*else
-		{
-			
-			if (isConnected && CheckTimer(isTimeout))			
-			{
-				LOG(1, "[UDP][CLOSE][%s]\n", "INACTIVITY");
-				setClose();				
-			}
-			
-		}
-		*/							       				
+							       				
 		if (!isBlitting)		
 		{						
 			break;
 		}
 								
 	}
-						        
+	
+	if (groovyLogo)
+	{
+		loadLogo(0);
+	}		
+				        
 	if (doVerbose > 0 && CheckTimer(logTime))				
    	{   	      		
 		fflush(fp);	

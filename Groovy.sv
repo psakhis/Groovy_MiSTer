@@ -598,7 +598,8 @@ always @(posedge clk_sys) begin
 			  case (state)
 				8'd0: // start?				
 				begin		
-				  {r_in, g_in, b_in}   <= {8'hd1,8'h96,8'h28};		// dark yellow, not cmd_init
+				//  {r_in, g_in, b_in}   <= {8'hd1,8'h96,8'h28};		// dark yellow, not cmd_init
+				  {r_in, g_in, b_in}   <= {8'h00,8'h00,8'h00};	              			 
 				  vga_reset            <= 1'b0;
 				  vga_frame_reset      <= 1'b1;
 				  vga_soft_reset       <= 1'b0;
@@ -954,7 +955,8 @@ always @(posedge clk_sys) begin
 				*/
 				8'd90:  // defaults
 				begin		                       
-             {r_in, g_in, b_in} <= {8'hd1,8'h96,8'h28};	   // dark yellow, not cmd_init
+             //{r_in, g_in, b_in} <= {8'hd1,8'h96,8'h28};	   // dark yellow, not cmd_init
+				 {r_in, g_in, b_in} <= {8'h00,8'h00,8'h00};	              			 
 				 PoC_H              <= 16'd256;
 				 PoC_HFP            <= 8'd10;
 				 PoC_HS             <= 8'd24;
