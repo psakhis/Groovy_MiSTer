@@ -28,7 +28,10 @@ To install on your MiSTer you need replace MiSTer binary from /media/fat (core i
     -skip_gameinfo 
     -syncrefresh 
     -nothrottle
-   
+    
+    *Automatic frame delay is applied with frame delay 0
+    -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay calculed)
+    
 ### Mednafen 
   for src details, see emu4crt fork https://github.com/psakhis/emu4crt
   ,on mednafen.cfg set:
