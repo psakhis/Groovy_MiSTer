@@ -40,6 +40,7 @@ To install on your MiSTer you need replace MiSTer binary from /media/fat (core i
     mister.port 32100
     mister.lz4 1 (raw or lz4)
     mister.vsync 0 (automatic frame delay)
+    video.resolution_switch mister
   
   
 ### Retroarch (Dreamcast non working atm)
