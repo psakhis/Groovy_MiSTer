@@ -15,7 +15,7 @@ To install on your MiSTer you need replace MiSTer binary from /media/fat (core i
 ## Emulators available
 
 ### GroovyMAME
- for src details, see GroovyMAME fork by @Calamity https://github.com/antonioginer/GroovyMAME/tree/nogpu_0261
+ for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases/tag/gm0261sr002y
  ,to activate new MiSTer backend set on command line args:
   
     -video mister 
