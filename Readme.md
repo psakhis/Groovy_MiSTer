@@ -1,7 +1,7 @@
 # Groovy core for MiSTer
 
 ## General description
-This core is a analog gpu for crt for subframe latency emulators
+This core is a analog GPU for CRTs aiming for very low subframe latency
 
 ## Features
 - Very low latency (3ms tested with GILT on GroovyMAME with frame delay 8)
