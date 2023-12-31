@@ -8,7 +8,7 @@ This core is a analog gpu for crt for subframe latency emulators
 - Full RGB888
 - Switch all modes (progressive/interlaced) reprogramming pll according to modeline
 - Connect with ethernet (can be work on wifi5/6 or Gb lan)
-- Menu options: scandoubler, video position, frameskip (uses framebuffer if emulator don't send frame at time), ..
+- Menu options: scandoubler, video position, framebuffer, ..
 
 To install on your MiSTer you need replace MiSTer binary from /media/fat (core isn't official yet)
   
