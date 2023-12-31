@@ -52,7 +52,11 @@ To install on your MiSTer you need replace MiSTer binary from /media/fat (core i
 
     *Automatic frame delay for best results on latency options
 
-
+## Thanks
+@Calamity for hard testing core and implement GroovyMAME for it
+GroovyArcade Discord, https://discord.gg/YtQ6pJh #nogpu
+MiSTer Discord #dev-talk
+Alan Steremberg for their lessons https://github.com/alanswx/Tutorials_MiSTer
 
 
 
