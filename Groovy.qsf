@@ -58,7 +58,22 @@ set_global_assignment -name SEED 1
 #set_global_assignment -name VERILOG_MACRO "MISTER_DUAL_SDRAM=1"
 
 #do not enable DEBUG_NOHDMI in release!
-set_global_assignment -name VERILOG_MACRO "MISTER_DEBUG_NOHDMI=1"
+#set_global_assignment -name VERILOG_MACRO "MISTER_DEBUG_NOHDMI=1"
+
+# disable bilinear filtering when downscaling
+#set_global_assignment -name VERILOG_MACRO "MISTER_DOWNSCALE_NN=1"
+
+# disable adaptive scanline filtering
+#set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ADAPTIVE=1"
+
+#use only 1MB per frame for scaler to free ~21MB DDR3 RAM
+#set_global_assignment -name VERILOG_MACRO "MISTER_SMALL_VBUF=1"
+
+# Disable YC / Composite output to save some resources
+#set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_YC=1"
+
+# Disable ALSA audio output to save some resources
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
 
 source sys/sys.tcl
 set_global_assignment -name FAMILY "Cyclone V"
