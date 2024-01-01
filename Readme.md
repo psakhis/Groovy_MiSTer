@@ -43,7 +43,7 @@ To install on your MiSTer you need replace MiSTer binary from /media/fat (core i
     video.resolution_switch mister
   
   
-### Retroarch (Dreamcast non working atm)
+### Retroarch (Dreamcast non working atm) Menu isn't adapted, so start with retroach.exe -L cores/xxxx.dll file
   
   on retroarch.cfg set:
   
