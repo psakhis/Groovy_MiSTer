@@ -3,6 +3,8 @@
 ## General description
 This core is a analog GPU for CRTs aiming for very low subframe latency
 
+https://youtu.be/H0175WJFpUs
+
 ## Features
 - Very low latency (3ms tested with GILT on GroovyMAME with frame delay 8)
 - Full RGB888
@@ -33,8 +35,6 @@ To install on your MiSTer you need replace MiSTer binary from /media/fat (core i
     -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay calculed)
 
     *Change "uifont default" to "uifont uismall.bdf" on mame.ini for pixel perfect menu
-
-    https://youtu.be/H0175WJFpUs
     
 ### Mednafen 
   for src details, see emu4crt fork https://github.com/psakhis/emu4crt
