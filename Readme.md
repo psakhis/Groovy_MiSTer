@@ -12,7 +12,7 @@ https://youtu.be/H0175WJFpUs
 - Connect with ethernet (can be work on wifi5/6 or Gb lan)
 - Menu options: scandoubler, video position, framebuffer, ..
 
-To install on your MiSTer you need replace MiSTer binary from /media/fat (core isn't official yet)
+To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed) 
   
 ## Emulators available
 
