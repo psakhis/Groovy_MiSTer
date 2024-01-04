@@ -61,11 +61,17 @@ Menu isn't adapted, so start with retroach.exe -L cores/xxxx.dll file
 ## Thanks
 @Calamity for hard testing core and implement GroovyMAME for it
 
+@sorgelig, for developing and maintaining MiSTer.
+
+@jotego, for analog adjustment module.
+
 GroovyArcade Discord, https://discord.gg/YtQ6pJh #nogpu
 
 MiSTer Discord #dev-talk
 
-Alan Steremberg for their lessons https://github.com/alanswx/Tutorials_MiSTer
+@alanswx for their lessons https://github.com/alanswx/Tutorials_MiSTer
 
+@wickerwaka for their tips using ddr
 
+@alexxnr for testing it and encourage me in the project
 
