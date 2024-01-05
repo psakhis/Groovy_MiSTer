@@ -30,6 +30,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
     -skip_gameinfo 
     -syncrefresh 
     -nothrottle
+    -autosync 0
     
     *Automatic frame delay is applied with frame delay 0
     -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay calculed)
