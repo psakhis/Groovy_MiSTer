@@ -26,7 +26,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
     -monitor arcade_15 
     -mister_window 
     -mister_ip "192.x.x.x" 
-    -mister_compression lz4 
+    -mister_compression none 
     -skip_gameinfo 
     -syncrefresh 
     -nothrottle
