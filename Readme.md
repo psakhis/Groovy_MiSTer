@@ -30,12 +30,12 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
     -skip_gameinfo 
     -syncrefresh 
     -nothrottle
-    -autosync 0
-    
+        
     *Automatic frame delay is applied with frame delay 0
     -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay calculed)
 
     *Change "uifont default" to "uifont uismall.bdf" on mame.ini for pixel perfect menu
+    *autosync 0 on mame.ini for menu (60hz)
     
 ### Mednafen 
   for src details, see emu4crt fork https://github.com/psakhis/emu4crt
