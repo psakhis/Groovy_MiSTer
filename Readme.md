@@ -17,7 +17,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 ## Emulators available
 
 ### GroovyMAME
- for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases/tag/gm0261sr002y
+ for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases/tag/gm0261sr002z
  ,to activate new MiSTer backend set on command line args:
   
     -video mister 
