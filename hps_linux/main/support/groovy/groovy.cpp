@@ -48,20 +48,23 @@
 #define UIO_SET_GROOVY_SWITCHRES 0xf3
 #define UIO_SET_GROOVY_BLIT      0xf4
 #define UIO_SET_GROOVY_LOGO      0xf5
+#define UIO_SET_GROOVY_AUDIO     0xf6
 
 // FPGA DDR shared
-#define BASEADDR 0x30000000
+#define BASEADDR 0x1C000000
 #define HEADER_LEN 0xff       
 #define CHUNK 7 
 #define HEADER_OFFSET HEADER_LEN - CHUNK 
+#define AUDIO_OFFSET 0xfd200  //0xfd2ff position for fpga    
 #define BUFFERSIZE (720 * 576 * 3) + HEADER_LEN
+
 
 // UDP server 
 #define UDP_PORT 32100
 #define CMD_CLOSE 1
 #define CMD_INIT 2
 #define CMD_SWITCHRES 3
-#define CMD_BLIT 4
+#define CMD_AUDIO 4
 #define CMD_GET_STATUS 5
 #define CMD_BLIT_VSYNC 6
 
@@ -74,11 +77,6 @@ static int doVerbose = 0;
 static int difUs = 0;
 static unsigned long logTime = 0;
 static FILE * fp = NULL;
-
-//printf("[%06.3f]",(double) difUs/1000); 
-//printf(fmt, __VA_ARGS__);	
-//fprintf(fp, "[%06.3f]",(double) difUs/1000); 
-//fprintf(fp, fmt, __VA_ARGS__);	
 
 #define LOG(sev,fmt, ...) do {	\
 			        if (sev == 0) printf(fmt, __VA_ARGS__);	\
@@ -111,8 +109,7 @@ typedef union
 
 typedef struct {   		
    //frame sync           
-   uint32_t PoC_frame_recv; 	   
-   uint16_t PoC_frame_vsync;  
+   uint32_t PoC_frame_recv; 	     
    uint32_t PoC_frame_ddr; 	         
       
    //modeline + pll -> burst 3
@@ -138,8 +135,6 @@ typedef struct {
    double   PoC_pclock;   
         
    //framebuffer          
-   uint32_t PoC_bytes_block[6];                             
-   uint32_t PoC_pixels_block[6];
    uint32_t PoC_bytes_len;               
    uint32_t PoC_pixels_len;               
    uint32_t PoC_bytes_recv;                             
@@ -147,6 +142,10 @@ typedef struct {
    
    double PoC_width_time; 
    uint16_t PoC_V_Total;        
+   
+   //audio
+   uint32_t PoC_audio_offset;
+   uint32_t PoC_bytes_audio_len;
                
 } PoC_type;
 
@@ -176,6 +175,8 @@ static uint8_t *map = 0;
 static uint8_t* buffer;
 
 static int blitCompression = 0;
+static uint8_t audioRate = 0;
+static uint8_t audioChannels = 0;
 
 /* LZ4 Streaming */
 static LZ4_streamDecode_t lz4StreamDecode_body;
@@ -191,9 +192,7 @@ static int isBlitting = 0;
 
 static uint8_t hpsBlit = 0; 
 static uint16_t numBlit = 0;
-static uint8_t doBlocks = 0;
-static uint8_t doAlwaysStatus = 0;
-static uint8_t doACKStatus = 0;
+static uint8_t doScreensaver = 0;
 static uint8_t isConnected = 0; 
 
 /* FPGA HPS EXT STATUS */
@@ -211,6 +210,8 @@ static uint8_t  fpga_vram_synced = 0;
 static uint8_t  fpga_vga_frameskip = 0;
 static uint8_t  fpga_vga_vblank = 0;
 static uint8_t  fpga_vga_f1 = 0;
+static uint8_t  fpga_audio = 0;
+
 
 static void initDDR()
 {
@@ -255,46 +256,12 @@ static void groovy_FPGA_hps()
 	else if (bits.u.bit0 == 1 && bits.u.bit1 == 1) doVerbose = 3;
 	else doVerbose = 0;
 	
-	printf("doVerbose %d\n", doVerbose);
 	initVerboseFile();				 
 	
-	if (bits.u.bit2 == 1 && bits.u.bit3 == 0 && bits.u.bit4 == 0) 
-	{
-		hpsBlit = 0;
-		doBlocks = 1;
-	} 
-	else if (bits.u.bit2 == 0 && bits.u.bit3 == 1 && bits.u.bit4 == 0) 	
-	{
-		hpsBlit = 1;
-		doBlocks = 1;
-	}
-	else if (bits.u.bit2 == 0 && bits.u.bit3 == 0 && bits.u.bit4 == 1) 	
-	{
-		hpsBlit = 2;
-		doBlocks = 1;
-	}
-	else if (bits.u.bit2 == 1 && bits.u.bit3 == 1 && bits.u.bit4 == 0) 	
-	{
-		hpsBlit = 3;
-		doBlocks = 1;
-	}
-	else if (bits.u.bit2 == 1 && bits.u.bit3 == 0 && bits.u.bit4 == 1) 	
-	{
-		hpsBlit = 4;
-		doBlocks = 1;
-	}
-	else if (bits.u.bit2 == 0 && bits.u.bit3 == 1 && bits.u.bit4 == 1) 	
-	{
-		hpsBlit = 5;
-		doBlocks = 1;
-	}
-	else
-	{
-		hpsBlit = 0;
-		doBlocks = 0;
-	}
-		
-	printf("hpsBlit=%d doBlocks=%d \n", hpsBlit, doBlocks);	
+	hpsBlit = bits.u.bit2;			
+	doScreensaver = !bits.u.bit3;	
+	
+	printf("doVerbose=%d hpsBlit=%d doScreenSaver=%d\n", doVerbose, hpsBlit, doScreensaver);	
 }
 
 static void groovy_FPGA_status_fast()
@@ -321,7 +288,8 @@ static void groovy_FPGA_status_fast()
 		fpga_vram_synced    = bits.u.bit2;   
 		fpga_vga_frameskip  = bits.u.bit3;   
 		fpga_vga_vblank     = bits.u.bit4;   		
-		fpga_vga_f1         = bits.u.bit5;   		
+		fpga_vga_f1         = bits.u.bit5;   	
+		fpga_audio          = bits.u.bit6;   				
 		
 		if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 		{
@@ -342,7 +310,7 @@ static void groovy_FPGA_status_fast()
 			}			
 		}
 		
-		fpga_vram_queue = spi_w(0) | spi_w(0) << 16;		
+		fpga_vram_queue = spi_w(0) | spi_w(0) << 16;					
   	}  		  		
     	DisableIO(); 	
 }
@@ -373,8 +341,9 @@ static void groovy_FPGA_status()
 			fpga_vram_synced    = bits.u.bit2;  
 			fpga_vga_frameskip  = bits.u.bit3;   
 			fpga_vga_vblank     = bits.u.bit4;  
-			fpga_vga_f1         = bits.u.bit5;  		
-			
+			fpga_vga_f1         = bits.u.bit5; 
+			fpga_audio          = bits.u.bit6;   	
+									
 			if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 			{
 				if (poc->PoC_interlaced)
@@ -394,7 +363,7 @@ static void groovy_FPGA_status()
 				}			
 			}	
 			
-			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;													
+			fpga_vram_queue = spi_w(0) | spi_w(0) << 16;																	
   		}  		
   	}	
     	DisableIO(); 	
@@ -423,18 +392,22 @@ static void groovy_FPGA_blit()
     DisableIO();        
 }
 
-static void groovy_FPGA_init(int cmd)
+static void groovy_FPGA_init(uint8_t cmd, uint8_t audio_rate, uint8_t audio_chan)
 {
 	uint16_t req = 0;
 	while (req == 0)
 	{
 		req = spi_uio_cmd_cont(UIO_SET_GROOVY_INIT);	
 		if (req) spi_w(cmd);
+		if (req && cmd)
+		{
+			spi_w(((uint16_t)audio_rate << 8) | audio_chan);			
+		}
 	}
 	DisableIO();
 }
 
-static void groovy_FPGA_logo(int cmd)
+static void groovy_FPGA_logo(uint8_t cmd)
 {	
     uint16_t req = 0;
     while (req == 0)
@@ -445,8 +418,25 @@ static void groovy_FPGA_logo(int cmd)
     DisableIO();        
 }
 
+static void groovy_FPGA_audio(uint16_t samples)
+{	
+    uint16_t req = 0;    
+    EnableIO();
+    while (req == 0)
+    {		
+	req = fpga_spi_fast(UIO_SET_GROOVY_AUDIO);		
+	if (req) spi_w(samples);
+    }	
+    DisableIO();        
+}
+
 static void loadLogo(int logoStart)
-{	  
+{	
+	if (!doScreensaver)
+	{
+		return;
+	}
+	
 	if (logoStart)
 	{
 		buffer[0] = (1) & 0xff;  
@@ -525,12 +515,6 @@ static void groovy_FPGA_blit(uint32_t pixels, uint16_t numBlit)
        
 }
 
-
-static uint32_t getNormalizedVCount(uint32_t frame, uint16_t vcount)
-{	
-	return (frame * poc->PoC_V_Total) + vcount;
-}
-
 static void setSwitchres()
 {               	   	 	    
     //modeline			       
@@ -596,22 +580,9 @@ static void setSwitchres()
     	poc->PoC_pixels_len = poc->PoC_pixels_len >> 1;
     } 
      
-    poc->PoC_bytes_len = poc->PoC_pixels_len * 3;
-            
-    poc->PoC_pixels_block[0] = poc->PoC_H * 16;
-    poc->PoC_pixels_block[1] = poc->PoC_H * 32;
-    poc->PoC_pixels_block[2] = poc->PoC_H * 64;
-    poc->PoC_pixels_block[3] = poc->PoC_H * 128;   
-    poc->PoC_pixels_block[4] = poc->PoC_H * 192;   
-    poc->PoC_pixels_block[5] = poc->PoC_pixels_len;
-    
-    poc->PoC_bytes_block[0] = poc->PoC_pixels_block[0] * 3;
-    poc->PoC_bytes_block[1] = poc->PoC_pixels_block[1] * 3;
-    poc->PoC_bytes_block[2] = poc->PoC_pixels_block[2] * 3;
-    poc->PoC_bytes_block[3] = poc->PoC_pixels_block[3] * 3;   
-    poc->PoC_bytes_block[4] = poc->PoC_pixels_block[4] * 3;   
-    poc->PoC_bytes_block[5] = poc->PoC_bytes_len;
-    poc->PoC_bytes_recv = 0;    
+    poc->PoC_bytes_len = poc->PoC_pixels_len * 3;            
+    poc->PoC_bytes_recv = 0;        
+    poc->PoC_audio_offset = 0;
     
     LOG(1,"[FPGA header] %d %d %d %d %d %d %d %d ce_pix=%d PLL(M0=%d,M1=%d,C0=%d,C1=%d,K=%d) \n",poc->PoC_H,poc->PoC_HFP, poc->PoC_HS,poc->PoC_HBP,poc->PoC_V,poc->PoC_VFP, poc->PoC_VS,poc->PoC_VBP,poc->PoC_ce_pix,poc->PoC_pll_M0,poc->PoC_pll_M1,poc->PoC_pll_C0,poc->PoC_pll_C1,poc->PoC_pll_K);				       			       	
     
@@ -651,42 +622,30 @@ static void setSwitchres()
 
 static void setClose()
 {          				
-	groovy_FPGA_init(0);	
+	groovy_FPGA_init(0, 0, 0);	
 	isBlitting = 0;		
-	blitCompression = 0;
-	doAlwaysStatus = 0;
-	doACKStatus = 0;
+	blitCompression = 0;		
 	LZ4offset = 0;
 	free(poc);	
 	initDDR();	
 	isConnected = 0;		
 	
 	// load LOGO
-	loadLogo(1);		
-	groovy_FPGA_init(1);    	
-	groovy_FPGA_blit(); 
-	groovy_FPGA_logo(1);
-	groovyLogo = 1;	
+	if (doScreensaver)
+	{	
+		sleep(1);	
+		loadLogo(1);		
+		groovy_FPGA_init(1, 0, 0);    	
+		groovy_FPGA_blit(); 
+		groovy_FPGA_logo(1);
+		groovyLogo = 1;	
+	}
 	
-}
-
-static void sendStatus()
-{          	
-	int flags = 0;
-	flags |= MSG_CONFIRM;	
-	char sendbuf[6];
-	sendbuf[0] = fpga_vga_vcount & 0xff;
-	sendbuf[1] = fpga_vga_vcount >> 8;
-	sendbuf[2] = fpga_vga_frame  & 0xff;
-	sendbuf[3] = fpga_vga_frame  >> 8;	
-	sendbuf[4] = fpga_vga_frame  >> 16;	
-	sendbuf[5] = fpga_vga_frame  >> 24;	
-	sendto(sockfd, sendbuf, 6, flags, (struct sockaddr *)&clientaddr, clilen);															
 }
 
 static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 {          	
-	LOG(1, "[ACK_STATUS][DDR px=%d fr=%d bl=%d][BLIT fr=%d vsync=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, udp_frame, udp_vsync, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
+	LOG(1, "[ACK_STATUS][DDR px=%d fr=%d bl=%d][BLIT fr=%d vsync=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d][AUDIO=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, udp_frame, udp_vsync, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame, fpga_audio);
 	
 	int flags = 0;
 	flags |= MSG_CONFIRM;	
@@ -714,26 +673,32 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 	bits.u.bit3 = fpga_vga_frameskip;
 	bits.u.bit4 = fpga_vga_vblank;
 	bits.u.bit5 = fpga_vga_f1;
-	bits.u.bit6 = (fpga_vram_pixels > 0) ? 1 : 0;
+	bits.u.bit6 = fpga_audio;
 	bits.u.bit7 = (fpga_vram_queue > 0) ? 1 : 0;
 	sendbuf[12] = bits.byte;
 	
 	sendto(sockfd, sendbuf, 13, flags, (struct sockaddr *)&clientaddr, clilen);																
 }
 
-static void setInit(uint8_t compression)
+static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan)
 {          				
-	blitCompression = compression;
-	LZ4offset = 0;
-	doACKStatus = 0;
-	doAlwaysStatus = 0;
+	blitCompression = (compression <= 1) ? compression : 0;
+	audioRate = (audio_rate <= 3) ? audio_rate : 0;
+	audioChannels = (audio_chan <= 2) ? audio_chan : 0;	
+	LZ4offset = 0;	
 	poc = (PoC_type *) calloc(1, sizeof(PoC_type));
 	initDDR();
-	groovy_FPGA_logo(0);
-	groovy_FPGA_init(0);
-	groovy_FPGA_init(1);																	
 	isBlitting = 0;	
-	groovyLogo = 0;	
+	
+	// load LOGO
+	if (doScreensaver)
+	{
+		groovy_FPGA_logo(0);																				
+		groovyLogo = 0;	
+	}
+	
+	groovy_FPGA_init(0, 0, 0);
+	groovy_FPGA_init(1, audioRate, audioChannels);
 	
 	if (!isConnected)
 	{				
@@ -743,30 +708,22 @@ static void setInit(uint8_t compression)
 		LOG(1,"[Connected %s:%s]\n", hoststr, portstr);		
 		isConnected = 1;
 	}
-	
-	if (doVerbose)
-	{
-		initVerboseFile();
-	}				
+					
 }
 
-static void setBlit(uint32_t udp_frame, uint16_t udp_vsync)
-{          		
-	poc->PoC_frame_recv = udp_frame;	
-	poc->PoC_frame_vsync = udp_vsync;
-	poc->PoC_bytes_recv = 0;		
+static void setBlit(uint32_t udp_frame)
+{          			
+	poc->PoC_frame_recv = udp_frame;		
+	poc->PoC_bytes_recv = 0;
+	poc->PoC_audio_offset = 0;		
 	isBlitting = 1;	
-	numBlit = hpsBlit;	
-	
-	if (udp_vsync != 0)
-	{
-		doAlwaysStatus = 1;	
-		doACKStatus = 1;
-	}	
-	
+	numBlit = 0;	
+	poc->PoC_pixels_ddr = 0;
+	LZ4cmpBytes = 0;
+					
 	if (doVerbose > 0 && doVerbose < 3)
 	{
-		LOG(1, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				
+		LOG(1, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);						
 	}	
 	
 	if (!doVerbose && !fpga_vram_synced)
@@ -776,36 +733,48 @@ static void setBlit(uint32_t udp_frame, uint16_t udp_vsync)
 	gettimeofday(&blitStart, NULL); 	
 }
 
+static void setBlitAudio(uint16_t udp_bytes_samples)
+{	
+	poc->PoC_bytes_audio_len = udp_bytes_samples;
+	poc->PoC_audio_offset = AUDIO_OFFSET; 
+	poc->PoC_bytes_recv = 0;	
+	
+	isBlitting = 2;																	
+}
+
+static void setBlitRawAudio(uint16_t len)
+{
+	poc->PoC_bytes_recv += len;	
+	isBlitting = (poc->PoC_bytes_recv >= poc->PoC_bytes_audio_len) ? 0 : 2;	
+			
+	if (isBlitting == 0)
+	{
+		uint16_t sound_samples = (audioChannels == 0) ? 0 : (audioChannels == 1) ? poc->PoC_bytes_audio_len >> 1 : poc->PoC_bytes_audio_len >> 2;		
+		groovy_FPGA_audio(sound_samples);	
+		poc->PoC_audio_offset = 0; 				
+	}	
+}
+												
 static void setBlitRaw(uint16_t len)
-{         	 	
+{       	
 	poc->PoC_bytes_recv += len;									
-	isBlitting = (poc->PoC_bytes_recv >= poc->PoC_bytes_len) ? 0 : 1;			
+	isBlitting = (poc->PoC_bytes_recv >= poc->PoC_bytes_len) ? 0 : 1;
 	LOG(2, "[DDR_BLIT][%d/%d]\n", poc->PoC_bytes_recv, poc->PoC_bytes_len);	
-	
-	if (doBlocks)
-	{								              
-                if (poc->PoC_bytes_recv >= poc->PoC_bytes_block[numBlit])			                
-                {		                	
-                	numBlit++;                	   			
-                	LOG(2, "[ACK_BLIT][DDR px=%d fr=%d, bl=%d]\n", (int) (poc->PoC_bytes_recv / 3),  poc->PoC_frame_recv, numBlit);                	
-                	groovy_FPGA_blit(poc->PoC_bytes_recv / 3, numBlit);			                									                					                				             			    			                		
-                	
-                }
-	}
-	else
-	{		     		
-     		numBlit++;
-     		LOG(2, "[ACK_BLIT][DDR px=%d fr=%d, bl=%d]\n", (int) (poc->PoC_bytes_recv / 3),  poc->PoC_frame_recv, numBlit);                	
+       	
+       	if (!hpsBlit) //ASAP
+       	{
+       		numBlit++;     		
 		groovy_FPGA_blit(poc->PoC_bytes_recv / 3, numBlit);		
-	}
-	
+		LOG(2, "[ACK_BLIT][DDR px=%d fr=%d, bl=%d]\n", (int) (poc->PoC_bytes_recv / 3),  poc->PoC_frame_recv, numBlit);      
+       	}
+		
         if (isBlitting == 0)
-        {		
-        	//better if no occurs it
+        {		        	
         	if (poc->PoC_pixels_ddr < poc->PoC_pixels_len)
         	{        		
-        		LOG(1, "[!!ACK_BLIT][DDR px=%d fr=%d]\n", poc->PoC_pixels_len,  poc->PoC_frame_recv);
-			groovy_FPGA_blit(poc->PoC_pixels_len, numBlit);	
+        		numBlit++;        		
+			groovy_FPGA_blit(poc->PoC_bytes_recv / 3, numBlit);				
+			LOG(2, "[ACK_BLIT][DDR px=%d fr=%d, bl=%d]\n", (int) (poc->PoC_bytes_recv / 3),  poc->PoC_frame_recv, numBlit);      
         	}
         	        	
 		gettimeofday(&blitStop, NULL); 
@@ -836,18 +805,27 @@ static void setBlitLZ4(uint16_t len)
    			LZ4_setStreamDecode(lz4StreamDecode, NULL, 0);   	
    			decBufIndex = 0;   			
    		}
-   		char* const decPtr = decBuf[decBufIndex]; 	   		 		
+   		char* const decPtr = decBuf[decBufIndex]; 	   		 		   		
    		const int decBytes = LZ4_decompress_safe_continue(lz4StreamDecode, (char *) &recvbuf[2], decPtr, LZ4cmpBytes, LZ4blockSize);   		
    		decBufIndex = (decBufIndex + 1) % 2;
-   		   		
+   		LOG(2,"[LZ4_DEC][%s]\n", "UNCOMPRESS");   		
    		if (decBytes <= 0)
    		{
    			LOG(1,"[LZ4_DEC][%d][ERROR]\n", decBytes);
    		}
    		else
-   		{
-   			memcpy(&buffer[HEADER_OFFSET + poc->PoC_bytes_recv], (char *) &decPtr[0], decBytes);   			   		
-			setBlitRaw(decBytes);		   		   															   		
+   		{   		
+   			LZ4cmpBytes = 0;	
+   			memcpy(&buffer[HEADER_OFFSET + poc->PoC_audio_offset + poc->PoC_bytes_recv], (char *) &decPtr[0], decBytes);   			   		
+   			LOG(2,"[LZ4_DEC][%s]\n", "MEMCPY");	
+   			if (isBlitting == 1)
+   			{   		   															   		
+   				setBlitRaw(decBytes);	   			  									
+   			}
+   			else
+   			{
+   				setBlitRawAudio(decBytes);	//never used
+   			}	
 		}	
 	}		
 }
@@ -862,8 +840,8 @@ static void groovy_map_ddr()
     	int num_bytes=BUFFERSIZE;
     	
     	map = (uint8_t*)shmem_map(map_start, num_bytes+map_off);      	    	
-    	buffer = map + map_off;     
-    	 
+    	buffer = map + map_off;         	
+    	    
     	initDDR();
     	poc = (PoC_type *) calloc(1, sizeof(PoC_type));		    	
 }
@@ -925,20 +903,23 @@ static void groovy_start()
 	groovy_FPGA_hps();   
 	
 	// reset fpga    
-    	groovy_FPGA_init(0);    	    	
+    	groovy_FPGA_init(0, 0, 0);    	    	
 	
 	// map DDR 		
 	groovy_map_ddr();
 	
 	// load LOGO	
-	loadLogo(1);
-	groovy_FPGA_init(1);    		
-	groovy_FPGA_blit(); 
-	groovy_FPGA_logo(1); 			
-	groovyLogo = 1;		
-        	
+	if (doScreensaver)
+	{
+		loadLogo(1);
+		groovy_FPGA_init(1, 0, 0);    		
+		groovy_FPGA_blit(); 
+		groovy_FPGA_logo(1); 			
+		groovyLogo = 1;			
+	}	
+	
     	// UDP Server     	
-	groovy_udp_server_init();   	    	    	    	    	           	    	    	    	    	    	        	    	
+	groovy_udp_server_init();   	  	  		    	    	    	           	    	    	    	    	    	        	    	
 	    	
     	printf("Groovy-Server 0.1 started\n");    			    	                          		
 }
@@ -948,116 +929,127 @@ void groovy_poll()
 	if (!groovyServer)
 	{
 		groovy_start();
-	}	    	                                                                          	                                               					   										
-					
+	}	    	                                                                          	                                               					   											
+  				
 	int len = 0; 					
 	char* recvbufPtr;
 	
 	for (;;)		
 	{	
-		if (doAlwaysStatus)
+		if (doVerbose == 3)
 		{		
 			groovy_FPGA_status_fast();
+			if (isConnected)
+			{
+				LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			     			
+			}
 		}					     		    
-     		
-     		if (isConnected && doVerbose == 3)
-     		{
-			if (!doAlwaysStatus)
-			{ 
-				groovy_FPGA_status_fast();
-			}							
-     			LOG(3, "[GET_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);     			     			
-     		}  		    		
-     		     		     		
-     		// ack vsync?	
-     		if (doACKStatus && getNormalizedVCount(fpga_vga_frame, fpga_vga_vcount) >= getNormalizedVCount(poc->PoC_frame_recv, poc->PoC_frame_vsync))
-		{
-			doACKStatus = 0;
-			LOG(1, "[ACK_STATUS][DDR px=%d fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", poc->PoC_pixels_ddr, poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);
-			sendStatus();
-		}
-									
-		recvbufPtr = (isBlitting && !blitCompression) ? (char *) (buffer + HEADER_OFFSET + poc->PoC_bytes_recv) : (char *) &recvbuf[LZ4offset];
+				
+		recvbufPtr = ((isBlitting == 1 && !blitCompression) || isBlitting == 2) ? (char *) (buffer + HEADER_OFFSET + poc->PoC_audio_offset + poc->PoC_bytes_recv) : (char *) &recvbuf[LZ4offset];											
 		len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);			
 									
 		if (len > 0) 
-		{    										
+		{    	
+			if (isBlitting)
+			{								
+				//udp buffer error lost detection 
+				if (len > 0 && len < 1470)
+				{								
+					if (isBlitting == 1 && !blitCompression && poc->PoC_bytes_recv + len != poc->PoC_bytes_len)
+					{
+						isBlitting = 0;
+					}								
+					
+					if (isBlitting == 1 && blitCompression && LZ4cmpBytes > 0 && LZ4offset + len - 2 != LZ4cmpBytes)
+					{						
+						isBlitting = 0;
+					}					
+					
+					if (isBlitting == 2 && poc->PoC_bytes_recv + len != poc->PoC_bytes_audio_len)
+					{
+						isBlitting = 0;
+					}								
+				}
+			}	
+											
 			if (!isBlitting)
 			{				
 	    			switch (recvbufPtr[0]) 
 	    			{		
 		    			case CMD_CLOSE:
-					{						   											        
-						LOG(1, "[CMD_CLOSE][%d]\n", recvbufPtr[0]);
-						setClose();						
+					{	
+						if (len == 1)
+						{					   											        
+							LOG(1, "[CMD_CLOSE][%d]\n", recvbufPtr[0]);
+							setClose();						
+						}	
 					}; break;
 					
 					case CMD_INIT:
 					{	
-						uint8_t compression = recvbufPtr[1];
-						if (len > 2 && compression)
+						if (len == 4)
 						{
-							LZ4blockSize = ((uint16_t) recvbufPtr[3]  << 8) | recvbufPtr[2];
-							LOG(1, "[CMD_INIT][%d][Compression=%d][BlockSize=%d]\n", recvbufPtr[0], compression, LZ4blockSize);
+							if (doVerbose)
+							{
+								initVerboseFile();
+							}
+							uint8_t compression = recvbufPtr[1];														
+							uint8_t audio_rate = recvbufPtr[2];
+							uint8_t audio_channels = recvbufPtr[3];								
+							LOG(1, "[CMD_INIT][%d][Compression=%d][Audio rate=%d chan=%d]\n", recvbufPtr[0], compression, audio_rate, audio_channels);											       									
+							setInit(compression, audio_rate, audio_channels);						
 						}	
-				       		else
-				       		{
-				       			LOG(1, "[CMD_INIT][%d][Compression=%d]\n", recvbufPtr[0], compression);	
-				       		}	
-						
-						setInit(compression);						
 					}; break;
 					
 					case CMD_SWITCHRES:
-					{				       	       
-				       		LOG(1, "[CMD_SWITCHRES][%d]\n", recvbufPtr[0]);
-				       		setSwitchres();					       						       				       						       						       		
+					{	
+						if (len == 26)
+						{			       	       
+				       			LOG(1, "[CMD_SWITCHRES][%d]\n", recvbufPtr[0]);
+				       			setSwitchres();					       						       				       						       						       		
+				       		}	
 					}; break;
 					
-					case CMD_BLIT:
-					{							
-						uint32_t udp_frame = ((uint32_t) recvbufPtr[4]  << 24) | ((uint32_t)recvbufPtr[3]  << 16) | ((uint32_t)recvbufPtr[2]  << 8) | recvbufPtr[1];
-						uint16_t udp_vsync = ((uint16_t) recvbufPtr[6]  << 8) | recvbufPtr[5];
-						if (len > 6 && blitCompression)
-						{
-							LZ4blockSize = ((uint16_t) recvbufPtr[8]  << 8) | recvbufPtr[7];
-							LOG(1, "[CMD_BLIT][%d][Frame=%d][Vsync=%d][BlockSize=%d]\n", recvbufPtr[0], udp_frame, udp_vsync, LZ4blockSize);							
-						}	
-				       		else
-				       		{
-				       			LOG(1, "[CMD_BLIT][%d][Frame=%d][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_vsync);
-				       		}		
-				       		if (!doAlwaysStatus)
-				       		{
-				       			groovy_FPGA_status_fast();	
-				       		}			     
-				       		setBlit(udp_frame, udp_vsync);					       					       							    			    			    							       				       					       		
-					}; break;
+					case CMD_AUDIO:
+					{	
+						if (len == 3)
+						{							
+							uint16_t udp_bytes_samples = ((uint16_t) recvbufPtr[2]  << 8) | recvbufPtr[1];
+							LOG(1, "[CMD_AUDIO][%d][Bytes=%d]\n", recvbufPtr[0], udp_bytes_samples);
+							setBlitAudio(udp_bytes_samples);						
+						}
+					}; break;											
 					
 					case CMD_GET_STATUS:
 					{	
-						groovy_FPGA_status();					
-				       		LOG(1, "[CMD_GET_STATUS][%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", recvbufPtr[0], fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				       		
-						sendStatus();							        				
+						if (len == 1)
+						{
+							groovy_FPGA_status();					
+				       			LOG(1, "[CMD_GET_STATUS][%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d]\n", recvbufPtr[0], fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame);				       		
+							sendACK(0, 0);							        				
+						}	
 					}; break;
 					
 					case CMD_BLIT_VSYNC:
-					{							
-						uint32_t udp_frame = ((uint32_t) recvbufPtr[4]  << 24) | ((uint32_t)recvbufPtr[3]  << 16) | ((uint32_t)recvbufPtr[2]  << 8) | recvbufPtr[1];
-						uint16_t udp_vsync = ((uint16_t) recvbufPtr[6]  << 8) | recvbufPtr[5];
-						if (len > 6 && blitCompression)
-						{
-							LZ4blockSize = ((uint16_t) recvbufPtr[8]  << 8) | recvbufPtr[7];
-							LOG(1, "[CMD_BLIT_VSYNC][%d][Frame=%d][Vsync=%d][BlockSize=%d]\n", recvbufPtr[0], udp_frame, udp_vsync, LZ4blockSize);							
-						}	
-				       		else
-				       		{
-				       			LOG(1, "[CMD_BLIT_VSYNC][%d][Frame=%d][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_vsync);
-				       		}																		
-				       		groovy_FPGA_status();
-				       		setBlit(udp_frame, 0);					       			
-				       		sendACK(udp_frame, udp_vsync);				       				       					       		
-					}; break;
+					{		
+						if (len == 7 || len == 9)
+						{					
+							uint32_t udp_frame = ((uint32_t) recvbufPtr[4]  << 24) | ((uint32_t)recvbufPtr[3]  << 16) | ((uint32_t)recvbufPtr[2]  << 8) | recvbufPtr[1];
+							uint16_t udp_vsync = ((uint16_t) recvbufPtr[6]  << 8) | recvbufPtr[5];
+							if (len == 9 && blitCompression)
+							{
+								LZ4blockSize = ((uint16_t) recvbufPtr[8]  << 8) | recvbufPtr[7];
+								LOG(1, "[CMD_BLIT_VSYNC][%d][Frame=%d][Vsync=%d][BlockSize=%d]\n", recvbufPtr[0], udp_frame, udp_vsync, LZ4blockSize);							
+							}	
+					       		else
+					       		{
+					       			LOG(1, "[CMD_BLIT_VSYNC][%d][Frame=%d][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_vsync);
+					       		}																		
+					       		groovy_FPGA_status();
+					       		setBlit(udp_frame);					       			
+					       		sendACK(udp_frame, udp_vsync);	
+					       	}					       					       				       					       		
+					}; break;										
 					
 					default: 
 					{
@@ -1074,15 +1066,30 @@ void groovy_poll()
 					{
 						case 0: 
 						{
-							setBlitRaw(len); 
+							if (isBlitting == 1)
+							{
+								setBlitRaw(len); 
+							}
+							else
+							{
+								setBlitRawAudio(len);	
+							}	
 						}
 						break; 	
 						case 1: 
-						{							
-							setBlitLZ4(len);
+						{	
+							if (isBlitting == 1)
+							{
+								setBlitLZ4(len); 
+							}
+							else
+							{
+								setBlitRawAudio(len);	// no lz4 for audio (bad compress ratio)
+							}							
+							
 						} 
 						break;
-					}					                
+					}									                
 				}
 				else
 				{					
@@ -1099,7 +1106,7 @@ void groovy_poll()
 								
 	}
 	
-	if (groovyLogo)
+	if (doScreensaver && groovyLogo)
 	{
 		loadLogo(0);
 	}		
