@@ -632,8 +632,7 @@ static void setClose()
 	
 	// load LOGO
 	if (doScreensaver)
-	{	
-		sleep(1);	
+	{			
 		loadLogo(1);		
 		groovy_FPGA_init(1, 0, 0);    	
 		groovy_FPGA_blit(); 
