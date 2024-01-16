@@ -446,7 +446,9 @@ static void loadLogo(int logoStart)
 	   	buffer[4] = (61440 >> 8) & 0xff;	       	  
 	 	buffer[5] = (61440 >> 16) & 0xff;      	 			         	      	                     
 		buffer[6] = (1) & 0xff; 	
-		buffer[7] = (1 >> 8) & 0xff;					
+		buffer[7] = (1 >> 8) & 0xff;
+		
+		logoTime = GetTimer(LOGO_TIMER); 					
 	}
 
 	if (CheckTimer(logoTime))    	
@@ -627,7 +629,7 @@ static void setClose()
 	blitCompression = 0;		
 	LZ4offset = 0;
 	free(poc);	
-	initDDR();	
+	//initDDR();	
 	isConnected = 0;		
 	
 	// load LOGO
@@ -996,7 +998,9 @@ void groovy_poll()
 							uint8_t audio_rate = recvbufPtr[2];
 							uint8_t audio_channels = recvbufPtr[3];								
 							LOG(1, "[CMD_INIT][%d][Compression=%d][Audio rate=%d chan=%d]\n", recvbufPtr[0], compression, audio_rate, audio_channels);											       									
-							setInit(compression, audio_rate, audio_channels);						
+							setInit(compression, audio_rate, audio_channels);	
+							groovy_FPGA_status();
+							sendACK(0, 0);					
 						}	
 					}; break;
 					
