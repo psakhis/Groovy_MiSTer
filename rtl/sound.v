@@ -28,7 +28,7 @@ module sound (
 ///////////////////////////////////////////////////////////////////////////////
 
 reg sound_start = 1'b0;
-reg sound_empty = 1'b0;
+
 reg[15:0] samples_skip = 16'd0;
 reg[15:0] samples_lost = 16'd0;
 reg[15:0] samples_to_start = 16'd0;
@@ -52,42 +52,43 @@ assign sound_write_ready = !fifo_wrfull_l;
 wire[15:0] fifo_sound_l, fifo_sound_r;
 reg sound_l_rdreq, sound_r_rdreq, sound_l_wrreq, sound_r_wrreq;
 wire fifo_rdempty_l, fifo_wrfull_l, fifo_rdempty_r, fifo_wrfull_r;
+wire[12:0] fifo_samples_l, fifo_samples_r;
 
 ////////////////////////// FIFO ////////////////////////////////////////////
-fifo fifo_l(    
+fifo_sound fifo_l(
+   .aclr(sound_reset),    
    .data(sound_l_in),
-        .rdclk(clk_audio),
-        .rdreq(sound_l_rdreq),
-        .wrclk(clk_sys),
-        .wrreq(sound_l_wrreq),
-        .q(fifo_sound_l),
-        .rdempty(fifo_rdempty_l),
-        .wrfull(fifo_wrfull_l)
+   .rdclk(clk_audio),
+   .rdreq(sound_l_rdreq),
+   .wrclk(clk_sys),
+   .wrreq(sound_l_wrreq),
+   .q(fifo_sound_l),
+   .rdempty(fifo_rdempty_l),
+   .wrfull(fifo_wrfull_l),
+	.wrusedw(fifo_samples_l)
 );
 
-fifo fifo_r(    
+fifo_sound fifo_r(
+   .aclr(sound_reset),    
    .data(sound_r_in),
-        .rdclk(clk_audio),
-        .rdreq(sound_r_rdreq),
-        .wrclk(clk_sys),
-        .wrreq(sound_r_wrreq),
-        .q(fifo_sound_r),
-        .rdempty(fifo_rdempty_r),
-        .wrfull(fifo_wrfull_r)
+   .rdclk(clk_audio),
+   .rdreq(sound_r_rdreq),
+   .wrclk(clk_sys),
+   .wrreq(sound_r_wrreq),
+   .q(fifo_sound_r),
+   .rdempty(fifo_rdempty_r),
+   .wrfull(fifo_wrfull_r),
+	.wrusedw(fifo_samples_r)
 );
-
 
 // write sample
 always@(posedge clk_sys) begin                             
         
    if (sound_reset) begin
-     sound_start      <= 1'b0;     
-     sound_empty      <= 1'b1; 
+     sound_start      <= 1'b0;         
      samples_skip     <= 1'b0;
      samples_to_start <= 1'b0;
-   end
-   
-   if (sound_start) sound_empty <= 1'b0;
+   end     
    
    if (!sound_start && vga_frame >= 32'd1 && vga_vcount <= vga_interlaced && samples_to_start >= samples_buffer) sound_start <= 1'b1;       
    
@@ -119,7 +120,7 @@ always@(posedge clk_audio) begin
    sound_l_rdreq <= 1'b0;
    sound_r_rdreq <= 1'b0;
         
-   if (sound_start || sound_empty) begin                
+   if (sound_start) begin                
      if (audio_cnt == clocks_per_sample - 1'b1) begin
        audio_cnt     <= 16'd0;
        sound_l_rdreq <= (fifo_rdempty_l || sound_chan == 1'b0) ? 1'b0 : 1'b1;

@@ -272,8 +272,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 ////////////////////////////  HPS I/O  EXT ///////////////////////////////////
 
 wire [35:0] EXT_BUS;
-reg  reset_switchres = 0, vga_frameskip = 0, reset_blit = 0, auto_blit = 0, auto_blit_fskip = 0, reset_audio = 0; 
-wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio;
+reg  reset_switchres = 0, vga_frameskip = 0, reset_blit = 0, auto_blit = 0, auto_blit_fskip = 0, reset_audio = 0, reset_restart = 0; 
+wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio, cmd_restart;
 wire [15:0] audio_samples;
 wire [1:0] sound_rate, sound_chan;
 
@@ -281,6 +281,7 @@ hps_ext hps_ext
 (
         .clk_sys(clk_sys),
         .EXT_BUS(EXT_BUS),
+		  .state(state),
         .hps_rise(1'b1),        
         .hps_verbose(hps_verbose),
         .hps_blit(hps_blit),
@@ -298,7 +299,9 @@ hps_ext hps_ext
         .vram_synced(vram_synced),
         .vram_end_frame(vram_end_frame),
         .vram_ready(vram_req_ready),
-        .cmd_init(cmd_init), 
+        .cmd_init(cmd_init),
+		  .cmd_restart(cmd_restart),
+		  .reset_restart(reset_restart), 
         .reset_switchres(reset_switchres),
         .cmd_switchres(cmd_switchres),
         .reset_blit(reset_blit),
@@ -517,6 +520,7 @@ always @(posedge clk_sys) begin
          8'd0: // start?                         
          begin                                           
            {r_in, g_in, b_in}   <= {8'h00,8'h00,8'h00};                                   
+			  reset_restart        <= 1'b0;
            vga_reset            <= 1'b0;
            vga_frame_reset      <= 1'b1;
            vga_soft_reset       <= 1'b0;
@@ -549,8 +553,9 @@ always @(posedge clk_sys) begin
            ddr_req_ch           <= 1'b0;                                 
            ddr_data_ch          <= 1'b0; 
            ddr_addr             <= 28'd0;                                          
-           vram_active          <= cmd_init ? 1'b1 : 1'b0;                                 
-           if (!cmd_init) begin      // reset to defaults                                                             
+           vram_active          <= (cmd_init && !cmd_restart) ? 1'b1 : 1'b0;                                 
+           if (!cmd_init || cmd_restart) begin   // reset to defaults   
+             reset_restart      <= 1'b1;			  
              state              <= 8'd90;                            
            end else                                          
            if (cmd_switchres && !ddr_busy && (!vga_frameskip || vblank_core)) begin        // request modeline (apply after blit)  
@@ -847,32 +852,25 @@ always @(posedge clk_sys) begin
              state           <= 8'd63;                                                                                            
            end    
          end     
-         8'd63:  // save sample on vram                
+         8'd63:  // save sample on fifo sound               
          begin                                                           
            if (PoC_audio_vram >= PoC_audio_count) begin                          
-             sound_write  <= 1'b0;       
-             state        <= 8'd1;
+             sound_write     <= 1'b0;       
+             state           <= 8'd1;
            end else 
            begin                                                                                                 
-             sound_write <= 1'b1;                                                                                 
-             sound_l_in  <= ddr_data960[16*(ddr_word16) +:16];                
-             sound_r_in  <= (sound_chan == 2'd2) ? ddr_data960[16*(ddr_word16+1) +:16] : 16'd0;                                                  
-             state       <= 8'd64;                                                                                                                                                                                                              
+             sound_write     <= 1'b1;                                                                                 
+             sound_l_in      <= ddr_data960[16*(ddr_word16) +:16];                
+             sound_r_in      <= (sound_chan == 2'd2) ? ddr_data960[16*(ddr_word16+1) +:16] : 16'd0;
+				 PoC_audio_vram  <= PoC_audio_vram + 1'b1;
+				 ddr_word16      <= ddr_word16 + sound_chan;
+             if (ddr_word16 >= 8'd60 - sound_chan) begin
+               ddr_addr_next <= ddr_addr_next + 8'd120;				   
+				   state         <= 8'd64;					
+             end				              
            end                                 
-         end                                             
-         8'd64:         
-         begin           
-           sound_write    <= 1'b0;                           
-           PoC_audio_vram <= PoC_audio_vram + 8'd1;                                
-           if (ddr_word16 < (8'd60 - sound_chan)) begin                                           
-             ddr_word16     <= ddr_word16 + sound_chan;                          
-             state          <= 8'd63;                                                                         
-           end else begin                               
-             ddr_addr_next  <= ddr_addr_next + 8'd120;
-             state          <= 8'd65;
-           end
-         end                                     
-         8'd65:  // reuse channel
+         end			
+         8'd64:  // reuse channel
          begin              
            sound_write    <= 1'b0;                           
            if (!ddr_busy) begin          
@@ -880,10 +878,10 @@ always @(posedge clk_sys) begin
              ddr_req_ch   <= ddr_data_ch;
              ddr_data_req <= 1'b1;      
              ddr_burst    <= 8'd15;                                           
-             state        <= 8'd66;                                                                                                                      
+             state        <= 8'd65;                                                                                                                      
            end    
          end  
-         8'd66:  // change channel 
+         8'd65:  // change channel 
          begin                                  
            if (ddr_busy) begin                                            
              ddr_data_ch  <= ~ddr_data_ch;
@@ -921,6 +919,7 @@ always @(posedge clk_sys) begin
           new_vmode          <= ~new_vmode;      
           vga_reset          <= 1'b1;
           sound_reset        <= 1'b1;
+			 reset_restart      <= 1'b0;
           state              <= 8'd0;   
          end
          default:

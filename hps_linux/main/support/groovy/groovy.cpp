@@ -189,6 +189,7 @@ static uint16_t LZ4offset = 0;
 static uint16_t LZ4blockSize = 0;
 
 static int isBlitting = 0;
+static int isCorePriority = 0;
 
 static uint8_t hpsBlit = 0; 
 static uint16_t numBlit = 0;
@@ -448,7 +449,7 @@ static void loadLogo(int logoStart)
 		buffer[6] = (1) & 0xff; 	
 		buffer[7] = (1 >> 8) & 0xff;
 		
-		logoTime = GetTimer(LOGO_TIMER); 					
+		logoTime = GetTimer(LOGO_TIMER + 64); 					
 	}
 
 	if (CheckTimer(logoTime))    	
@@ -629,7 +630,7 @@ static void setClose()
 	blitCompression = 0;		
 	LZ4offset = 0;
 	free(poc);	
-	//initDDR();	
+	initDDR();	
 	isConnected = 0;		
 	
 	// load LOGO
@@ -694,11 +695,11 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan)
 	// load LOGO
 	if (doScreensaver)
 	{
+		groovy_FPGA_init(0, 0, 0);
 		groovy_FPGA_logo(0);																				
 		groovyLogo = 0;	
 	}
-	
-	groovy_FPGA_init(0, 0, 0);
+		
 	groovy_FPGA_init(1, audioRate, audioChannels);
 	
 	if (!isConnected)
@@ -717,9 +718,11 @@ static void setBlit(uint32_t udp_frame)
 	poc->PoC_frame_recv = udp_frame;		
 	poc->PoC_bytes_recv = 0;
 	poc->PoC_audio_offset = 0;		
-	isBlitting = 1;	
-	numBlit = 0;	
 	poc->PoC_pixels_ddr = 0;
+	
+	isBlitting = 1;	
+	isCorePriority = 1;
+	numBlit = 0;		
 	LZ4cmpBytes = 0;
 					
 	if (doVerbose > 0 && doVerbose < 3)
@@ -739,14 +742,17 @@ static void setBlitAudio(uint16_t udp_bytes_samples)
 	poc->PoC_bytes_audio_len = udp_bytes_samples;
 	poc->PoC_audio_offset = AUDIO_OFFSET; 
 	poc->PoC_bytes_recv = 0;	
-	
+		
 	isBlitting = 2;																	
+	isCorePriority = 1;
 }
 
 static void setBlitRawAudio(uint16_t len)
 {
 	poc->PoC_bytes_recv += len;	
 	isBlitting = (poc->PoC_bytes_recv >= poc->PoC_bytes_audio_len) ? 0 : 2;	
+	
+	LOG(2, "[DDR_AUDIO][%d/%d]\n", poc->PoC_bytes_recv, poc->PoC_bytes_audio_len);
 			
 	if (isBlitting == 0)
 	{
@@ -770,7 +776,8 @@ static void setBlitRaw(uint16_t len)
        	}
 		
         if (isBlitting == 0)
-        {		        	
+        {	
+        	isCorePriority = 0;	        	
         	if (poc->PoC_pixels_ddr < poc->PoC_pixels_len)
         	{        		
         		numBlit++;        		
@@ -844,7 +851,10 @@ static void groovy_map_ddr()
     	buffer = map + map_off;         	
     	    
     	initDDR();
-    	poc = (PoC_type *) calloc(1, sizeof(PoC_type));		    	
+    	poc = (PoC_type *) calloc(1, sizeof(PoC_type));	
+    	
+    	isCorePriority = 0;	    	
+    	isBlitting = 0;	    	
 }
 
 static void groovy_udp_server_init()
@@ -969,7 +979,9 @@ void groovy_poll()
 					if (isBlitting == 2 && poc->PoC_bytes_recv + len != poc->PoC_bytes_audio_len)
 					{
 						isBlitting = 0;
-					}								
+					}
+					
+					isCorePriority = (isBlitting) ? 1 : 0;								
 				}
 			}	
 											
@@ -1097,12 +1109,13 @@ void groovy_poll()
 				else
 				{					
 					LOG(1, "[UDP_BLIT][%d bytes][Skipped no modeline]\n", len);
-					isBlitting = 0;					
+					isBlitting = 0;
+					isCorePriority = 0;					
 				}																				
 			}							
 		} 
 							       				
-		if (!isBlitting)		
+		if (!isCorePriority)		
 		{						
 			break;
 		}

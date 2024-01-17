@@ -123,7 +123,7 @@ always @(posedge DDRAM_CLK) begin
                         3'b100:         
                         begin  
                           if (DDRAM_DOUT_READY) begin
-                            ram_out960[ram_ch][64*(ram_index-1) +:64] <= DDRAM_DOUT;
+                            ram_out960[ram_ch][((ram_index-1) << 6) +:64] <= DDRAM_DOUT;
                             if (ram_index == ram_burst) begin
                               state                   <= 3'b000;
                               data_ready              <= 1;                

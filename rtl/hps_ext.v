@@ -21,7 +21,8 @@
 module hps_ext
 (
     input             clk_sys,
-    inout      [35:0] EXT_BUS,      
+    inout      [35:0] EXT_BUS, 
+    input      [8:0]  state,	 
     input             hps_rise,     
     input      [1:0]  hps_verbose,  
     input             hps_blit,     
@@ -40,6 +41,8 @@ module hps_ext
     input             vram_end_frame,
     input             vram_ready,
     output reg        cmd_init = 0,
+	 output reg        cmd_restart = 0,
+    input             reset_restart,
     input             reset_switchres,
     output reg        cmd_switchres = 0,         
     input             reset_blit,
@@ -93,8 +96,9 @@ always@(posedge clk_sys) begin
         if(old_hps_rise ^ hps_rise) hps_rise_req <= hps_rise_req + 1'd1;
         
         if (reset_switchres) cmd_switchres <= 1'b0;     
-        if (reset_blit) cmd_blit <= 1'b0;       
-        if (reset_audio) cmd_audio   <= 1'b0;
+        if (reset_blit)      cmd_blit      <= 1'b0;       
+        if (reset_audio)     cmd_audio     <= 1'b0;
+		  if (reset_restart)   cmd_restart   <= 1'b0;
         
         if(~io_enable) begin
                 dout_en <= 0;
@@ -146,21 +150,22 @@ always@(posedge clk_sys) begin
                                         endcase
                                                 
                                GET_GROOVY_HPS: case(byte_cnt)
-                                                  1: io_dout <= {12'd0, hps_screensaver, hps_blit, hps_verbose};                                                                                                 
+                                                 1: io_dout <= {12'd0, hps_screensaver, hps_blit, hps_verbose};                                                                                                 
                                                endcase                                 
                                                 
                                SET_INIT: case(byte_cnt)
-                                                       1: 
-                                                       begin                                                      
-                                                          cmd_init   <= io_din[0];                                                                                                                      
-                                                          sound_rate <= 0;
-                                                          sound_chan <= 0;
-                                                        end  
-                                                        2:
-                                                   begin
-                                                          sound_rate <= io_din[9:8];
-                                                          sound_chan <= io_din[1:0];                                                    
-                                                   end                                                                                                                  
+                                           1: 
+                                           begin                                                      
+                                             cmd_init    <= io_din[0];
+														   cmd_restart <= (io_din[0] && state != 8'd0) ? 1'b1 : 1'b0;
+                                             sound_rate  <= 0;
+                                             sound_chan  <= 0;
+                                           end  
+                                           2:
+                                           begin
+                                             sound_rate  <= io_din[9:8];
+                                             sound_chan  <= io_din[1:0];                                                    
+                                           end                                                                                                                  
                                          endcase 
                                                 
                                 SET_SWITCHRES: case(byte_cnt)
@@ -168,19 +173,19 @@ always@(posedge clk_sys) begin
                                                endcase 
                                                 
                                 SET_BLIT: case(byte_cnt)
-                                                 1: cmd_blit <= io_din[0];                       
+                                            1: cmd_blit <= io_din[0];                       
                                           endcase         
                                 
                                 SET_LOGO: case(byte_cnt)
-                                                 1: cmd_logo <= io_din[0];                       
+                                            1: cmd_logo <= io_din[0];                       
                                           endcase                 
                                 
                                 SET_AUDIO: case(byte_cnt)
-                                              1: 
-                                                begin 
-                                                  cmd_audio     <= 1'b1;
-                                                  audio_samples <= io_din;                      
-                                                end  
+                                             1: 
+                                             begin 
+                                               cmd_audio     <= 1'b1;
+                                               audio_samples <= io_din;                      
+                                             end  
                                            endcase                                        
                                                                         
                        endcase
