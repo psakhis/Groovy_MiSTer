@@ -212,6 +212,7 @@ static uint8_t  fpga_vga_frameskip = 0;
 static uint8_t  fpga_vga_vblank = 0;
 static uint8_t  fpga_vga_f1 = 0;
 static uint8_t  fpga_audio = 0;
+static uint8_t  fpga_init = 0;
 
 
 static void initDDR()
@@ -291,6 +292,7 @@ static void groovy_FPGA_status_fast()
 		fpga_vga_vblank     = bits.u.bit4;   		
 		fpga_vga_f1         = bits.u.bit5;   	
 		fpga_audio          = bits.u.bit6;   				
+		fpga_init           = bits.u.bit7;   				
 		
 		if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 		{
@@ -343,7 +345,8 @@ static void groovy_FPGA_status()
 			fpga_vga_frameskip  = bits.u.bit3;   
 			fpga_vga_vblank     = bits.u.bit4;  
 			fpga_vga_f1         = bits.u.bit5; 
-			fpga_audio          = bits.u.bit6;   	
+			fpga_audio          = bits.u.bit6;  
+			fpga_init           = bits.u.bit7;  	
 									
 			if (fpga_vga_vcount <= poc->PoC_interlaced) //end line
 			{
@@ -440,6 +443,11 @@ static void loadLogo(int logoStart)
 	
 	if (logoStart)
 	{
+		do
+		{
+			groovy_FPGA_status_fast();			
+		}  while (fpga_init != 0);	
+		
 		buffer[0] = (1) & 0xff;  
 	 	buffer[1] = (1 >> 8) & 0xff;	       	  
 	     	buffer[2] = (1 >> 16) & 0xff;    
@@ -449,7 +457,7 @@ static void loadLogo(int logoStart)
 		buffer[6] = (1) & 0xff; 	
 		buffer[7] = (1 >> 8) & 0xff;
 		
-		logoTime = GetTimer(LOGO_TIMER + 64); 					
+		logoTime = GetTimer(LOGO_TIMER); 					
 	}
 
 	if (CheckTimer(logoTime))    	
@@ -627,6 +635,7 @@ static void setClose()
 {          				
 	groovy_FPGA_init(0, 0, 0);	
 	isBlitting = 0;		
+	numBlit = 0;
 	blitCompression = 0;		
 	LZ4offset = 0;
 	free(poc);	
@@ -691,16 +700,15 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan)
 	poc = (PoC_type *) calloc(1, sizeof(PoC_type));
 	initDDR();
 	isBlitting = 0;	
+	numBlit = 0;	
 	
 	// load LOGO
 	if (doScreensaver)
 	{
 		groovy_FPGA_init(0, 0, 0);
 		groovy_FPGA_logo(0);																				
-		groovyLogo = 0;	
+		groovyLogo = 0;					
 	}
-		
-	groovy_FPGA_init(1, audioRate, audioChannels);
 	
 	if (!isConnected)
 	{				
@@ -710,7 +718,13 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan)
 		LOG(1,"[Connected %s:%s]\n", hoststr, portstr);		
 		isConnected = 1;
 	}
-					
+	
+	do
+	{
+		groovy_FPGA_status_fast();
+	} while (fpga_init != 0);	
+	
+	groovy_FPGA_init(1, audioRate, audioChannels);							
 }
 
 static void setBlit(uint32_t udp_frame)
@@ -994,7 +1008,7 @@ void groovy_poll()
 						if (len == 1)
 						{					   											        
 							LOG(1, "[CMD_CLOSE][%d]\n", recvbufPtr[0]);
-							setClose();						
+							setClose();																					
 						}	
 					}; break;
 					
@@ -1010,8 +1024,7 @@ void groovy_poll()
 							uint8_t audio_rate = recvbufPtr[2];
 							uint8_t audio_channels = recvbufPtr[3];								
 							LOG(1, "[CMD_INIT][%d][Compression=%d][Audio rate=%d chan=%d]\n", recvbufPtr[0], compression, audio_rate, audio_channels);											       									
-							setInit(compression, audio_rate, audio_channels);	
-							groovy_FPGA_status();
+							setInit(compression, audio_rate, audio_channels);																						
 							sendACK(0, 0);					
 						}	
 					}; break;

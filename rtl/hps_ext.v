@@ -21,8 +21,8 @@
 module hps_ext
 (
     input             clk_sys,
-    inout      [35:0] EXT_BUS, 
-    input      [8:0]  state,	 
+    inout      [35:0] EXT_BUS,   
+    input      [8:0]  state, 
     input             hps_rise,     
     input      [1:0]  hps_verbose,  
     input             hps_blit,     
@@ -40,9 +40,7 @@ module hps_ext
     input             vram_synced,
     input             vram_end_frame,
     input             vram_ready,
-    output reg        cmd_init = 0,
-	 output reg        cmd_restart = 0,
-    input             reset_restart,
+    output reg        cmd_init = 0,	
     input             reset_switchres,
     output reg        cmd_switchres = 0,         
     input             reset_blit,
@@ -97,8 +95,7 @@ always@(posedge clk_sys) begin
         
         if (reset_switchres) cmd_switchres <= 1'b0;     
         if (reset_blit)      cmd_blit      <= 1'b0;       
-        if (reset_audio)     cmd_audio     <= 1'b0;
-		  if (reset_restart)   cmd_restart   <= 1'b0;
+        if (reset_audio)     cmd_audio     <= 1'b0;		  
         
         if(~io_enable) begin
                 dout_en <= 0;
@@ -144,7 +141,7 @@ always@(posedge clk_sys) begin
                                            2: io_dout <= hps_vga_frame[31:16];                                                     
                                            3: io_dout <= hps_vga_vcount; 
                                            4: io_dout <= hps_vram_pixels[15:0];                                            
-                                           5: io_dout <= {1'd0, hps_audio, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready, hps_vram_pixels[23:16]};    
+                                           5: io_dout <= {(state == 8'd0) ? 1'b0 : 1'b1, hps_audio, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready, hps_vram_pixels[23:16]};    
                                            6: io_dout <= hps_vram_queue[15:0];
                                            7: io_dout <= {8'd0, hps_vram_queue[23:16]};                                                                            
                                         endcase
@@ -156,8 +153,7 @@ always@(posedge clk_sys) begin
                                SET_INIT: case(byte_cnt)
                                            1: 
                                            begin                                                      
-                                             cmd_init    <= io_din[0];
-														   cmd_restart <= (io_din[0] && state != 8'd0) ? 1'b1 : 1'b0;
+                                             cmd_init    <= io_din[0];														  
                                              sound_rate  <= 0;
                                              sound_chan  <= 0;
                                            end  

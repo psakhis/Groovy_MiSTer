@@ -272,8 +272,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 ////////////////////////////  HPS I/O  EXT ///////////////////////////////////
 
 wire [35:0] EXT_BUS;
-reg  reset_switchres = 0, vga_frameskip = 0, reset_blit = 0, auto_blit = 0, auto_blit_fskip = 0, reset_audio = 0, reset_restart = 0; 
-wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio, cmd_restart;
+reg  reset_switchres = 0, vga_frameskip = 0, reset_blit = 0, auto_blit = 0, auto_blit_fskip = 0, reset_audio = 0; 
+wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio;
 wire [15:0] audio_samples;
 wire [1:0] sound_rate, sound_chan;
 
@@ -299,9 +299,7 @@ hps_ext hps_ext
         .vram_synced(vram_synced),
         .vram_end_frame(vram_end_frame),
         .vram_ready(vram_req_ready),
-        .cmd_init(cmd_init),
-		  .cmd_restart(cmd_restart),
-		  .reset_restart(reset_restart), 
+        .cmd_init(cmd_init),		 
         .reset_switchres(reset_switchres),
         .cmd_switchres(cmd_switchres),
         .reset_blit(reset_blit),
@@ -519,8 +517,7 @@ always @(posedge clk_sys) begin
    case (state)
          8'd0: // start?                         
          begin                                           
-           {r_in, g_in, b_in}   <= {8'h00,8'h00,8'h00};                                   
-			  reset_restart        <= 1'b0;
+           {r_in, g_in, b_in}   <= {8'h00,8'h00,8'h00};                                   			
            vga_reset            <= 1'b0;
            vga_frame_reset      <= 1'b1;
            vga_soft_reset       <= 1'b0;
@@ -553,9 +550,8 @@ always @(posedge clk_sys) begin
            ddr_req_ch           <= 1'b0;                                 
            ddr_data_ch          <= 1'b0; 
            ddr_addr             <= 28'd0;                                          
-           vram_active          <= (cmd_init && !cmd_restart) ? 1'b1 : 1'b0;                                 
-           if (!cmd_init || cmd_restart) begin   // reset to defaults   
-             reset_restart      <= 1'b1;			  
+           vram_active          <= cmd_init ? 1'b1 : 1'b0;                                 
+           if (!cmd_init) begin   // reset to defaults               	  
              state              <= 8'd90;                            
            end else                                          
            if (cmd_switchres && !ddr_busy && (!vga_frameskip || vblank_core)) begin        // request modeline (apply after blit)  
@@ -918,8 +914,7 @@ always @(posedge clk_sys) begin
           req_modeline       <= ~new_modeline;                   
           new_vmode          <= ~new_vmode;      
           vga_reset          <= 1'b1;
-          sound_reset        <= 1'b1;
-			 reset_restart      <= 1'b0;
+          sound_reset        <= 1'b1;			 
           state              <= 8'd0;   
          end
          default:
