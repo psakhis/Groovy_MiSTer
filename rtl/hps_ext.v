@@ -48,7 +48,7 @@ module hps_ext
     output reg        cmd_logo = 0,
     output reg        cmd_audio = 0,
     input             reset_audio,
-   output reg [15:0]  audio_samples = 0
+    output reg [15:0] audio_samples = 0
  );
 
 assign EXT_BUS[15:0] = io_dout;
@@ -143,7 +143,7 @@ always@(posedge clk_sys) begin
                                            4: io_dout <= hps_vram_pixels[15:0];                                            
                                            5: io_dout <= {(state == 8'd0) ? 1'b0 : 1'b1, hps_audio, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready, hps_vram_pixels[23:16]};    
                                            6: io_dout <= hps_vram_queue[15:0];
-                                           7: io_dout <= {8'd0, hps_vram_queue[23:16]};                                                                            
+                                           7: io_dout <= {8'd0, hps_vram_queue[23:16]};                                        														                                 
                                         endcase
                                                 
                                GET_GROOVY_HPS: case(byte_cnt)

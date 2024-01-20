@@ -49,15 +49,16 @@ assign sound_r_out = sound_right;
 assign sound_write_ready = !fifo_wrfull_l;
 
 
+////////////////////////// FIFO ////////////////////////////////////////////
+reg[15:0] fifo_sound_l_in, fifo_sound_r_in;
 wire[15:0] fifo_sound_l, fifo_sound_r;
 reg sound_l_rdreq, sound_r_rdreq, sound_l_wrreq, sound_r_wrreq;
 wire fifo_rdempty_l, fifo_wrfull_l, fifo_rdempty_r, fifo_wrfull_r;
 wire[12:0] fifo_samples_l, fifo_samples_r;
 
-////////////////////////// FIFO ////////////////////////////////////////////
 fifo_sound fifo_l(
    .aclr(sound_reset),    
-   .data(sound_l_in),
+   .data(fifo_sound_l_in),
    .rdclk(clk_audio),
    .rdreq(sound_l_rdreq),
    .wrclk(clk_sys),
@@ -65,12 +66,12 @@ fifo_sound fifo_l(
    .q(fifo_sound_l),
    .rdempty(fifo_rdempty_l),
    .wrfull(fifo_wrfull_l),
-	.wrusedw(fifo_samples_l)
+   .wrusedw(fifo_samples_l)
 );
 
 fifo_sound fifo_r(
    .aclr(sound_reset),    
-   .data(sound_r_in),
+   .data(fifo_sound_r_in),
    .rdclk(clk_audio),
    .rdreq(sound_r_rdreq),
    .wrclk(clk_sys),
@@ -78,7 +79,7 @@ fifo_sound fifo_r(
    .q(fifo_sound_r),
    .rdempty(fifo_rdempty_r),
    .wrfull(fifo_wrfull_r),
-	.wrusedw(fifo_samples_r)
+   .wrusedw(fifo_samples_r)
 );
 
 // write sample
@@ -95,10 +96,12 @@ always@(posedge clk_sys) begin
    sound_l_wrreq <= 1'b0;
    sound_r_wrreq <= 1'b0;
      
-   if (sound_write_ready && sound_write && vga_frame >= 32'd1) begin    
+   if (sound_write && vga_frame >= 32'd1) begin    
      if (samples_skip < samples_lost) begin
        samples_skip <= samples_skip + 1'b1;  //avoid acum. delayed sound
      end else begin 
+       fifo_sound_l_in  <= sound_l_in;
+       fifo_sound_r_in  <= sound_r_in;
        sound_l_wrreq    <= (sound_chan > 1'b0) ? 1'b1 : 1'b0;
        sound_r_wrreq    <= (sound_chan > 1'b1) ? 1'b1 : 1'b0;
        samples_to_start <= (!sound_start) ? samples_to_start + 1'b1 : 1'b0;              

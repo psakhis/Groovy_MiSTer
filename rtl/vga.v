@@ -44,6 +44,8 @@ module vga (
    // VGA output        
    output [31:0] vga_frame,
    output [15:0] vcount,
+   output [23:0] vga_pixels,
+   
    output hsync,
    output vsync,
    output [7:0] r,
@@ -60,9 +62,11 @@ parameter R_NO_VRAM = 8'hFF;
 parameter G_NO_VRAM = 8'h00;
 parameter B_NO_VRAM = 8'h00;
 
-parameter VRAM_SIZE = 16'hFFFE; //HFFFF - 1
+parameter VRAM_SIZE = 18'h1FFB8;
 
 ///////////////////////////////////////////////////////////////////////////////
+
+reg[23:0] vga_pixels_frame = 24'd54180;
 
 reg[15:0] h_cnt;             // horizontal pixel counter
 reg[15:0] v_cnt;             // vertical pixel counter
@@ -99,145 +103,96 @@ assign vga_f1    = field;
 /////////////////////////////////////////////////////////////////////////////
 
 reg[23:0] vram_pixel_counter = 24'd0;  // pixels of current frame on all vrams
-reg       vram_init_rd = 1'b0;         // for reset, initialize defaults
-reg       vram_init_wr = 1'b0;         // for reset, initialize defaults
-reg[15:0] vram_addr_rd[2];             // pointer to vram pixel 
-reg       vram_rd_select = 1'd0;       // current vram reader
-reg[15:0] vram_addr_wr[2];             // pointer to vram writer
-reg       vram_wr_select = 1'd0;       // current vram writer
-reg       vram_write[2];               // write enable for vram
-reg       vram_dirty[2];               // pointer to vram used and safe to clean   
-reg       vram_dirty_select = 1'd0;    // vram to clean
 
-reg       vram_wait_vblank = 1'b0;     // waiting vblank to read pixels from vram (soft reset)
-reg       vram_out_sync = 1'b0;        // signal to detect when pixel isn't get from vram
-reg       vram_start = 1'b0;           // start using vram
+reg       vram_wait_vblank   = 1'b0;   // waiting vblank to read pixels from vram (soft reset)
+reg       vram_out_sync      = 1'b0;   // signal to detect when pixel isn't get from vram
+reg       vram_start         = 1'b0;   // start using vram
+reg       vga_started        = 1'b0;   // start vblanks counter
 
-
-wire      vram_free[2];  
-assign    vram_free[0]   = (vram_addr_wr[0] < VRAM_SIZE);                 // vram 0 isn't full
-assign    vram_free[1]   = (vram_addr_wr[1] < VRAM_SIZE);                 // vram 1 isn't full
-assign    vram_ready     = (vram_free[0] || vram_free[1]);                // vram it's ready to write a new pixel
-assign    vram_end_frame = vram_pixel_counter >= ((H * V) >> interlaced); // vram with all frame
+assign    vram_ready     = !fifo_rgb_full && fifo_rgb_queue < VRAM_SIZE;  // vram it's ready to write a new pixel
+assign    vram_end_frame = vram_pixel_counter >= vga_pixels_frame;        // vram with all frame
 assign    vram_pixels    = vram_pixel_counter;                            // number of current pixels writed on vram for a frame
-assign    vram_synced    = !vram_out_sync;                                // from point of view vram, synced frame
+assign    vram_synced    = !vram_out_sync;                                // from point of view vram, synced frame 
+assign    vram_queue     = fifo_rgb_queue;                                // pixels prepared to read
+assign    vga_pixels     = vga_pixels_frame;                              // pixels to get all frame
 
-wire [23:0] vram_pixels_queue[2];
-assign    vram_pixels_queue[0] = vram_addr_wr[0] >= vram_addr_rd[0] ? vram_addr_wr[0] - vram_addr_rd[0] + 24'd1 : 24'd0;
-assign    vram_pixels_queue[1] = vram_addr_wr[1] >= vram_addr_rd[1] ? vram_addr_wr[1] - vram_addr_rd[1] + 24'd1 : 24'd0;  
-assign    vram_queue           = vram_pixels_queue[0] + vram_pixels_queue[1]; //pixels prepared to read
+///////////////////////// FIFO VRAM ////////////////////////////////////////////
+reg[7:0] fifo_rgb_r_in, fifo_rgb_g_in, fifo_rgb_b_in;
+wire[7:0] fifo_rgb_r, fifo_rgb_g, fifo_rgb_b;
+reg fifo_rgb_req, fifo_rgb_write;
+wire fifo_rgb_empty, fifo_rgb_full;
+wire[17:0] fifo_rgb_queue;
 
-wire[7:0] vram_rgb_r[2];
-wire[7:0] vram_rgb_g[2];
-wire[7:0] vram_rgb_b[2];
+reg fifo_ahead = 1'b0;
 
-wire[7:0] vram_frame[2];
-
-///////////////////////// VRAM ////////////////////////////////////////////
-vram vram_r_ch0(        
-        .data(r_vram_in), // 8 bit
-        .wraddress(vram_addr_wr[0]), // 16 bit
-        .wren(vram_write[0]),
-        .wrclock(clk_sys), //
-        .rdaddress(vram_addr_rd[0]),    
-        .rdclock(clk_sys), //
-        .q(vram_rgb_r[0]) // 8 bit
+fifo_vga fifo_r(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_r_in),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write),
+   .q(fifo_rgb_r),
+   .rdempty(fifo_rgb_empty),
+   .wrfull(fifo_rgb_full),
+   .wrusedw(fifo_rgb_queue)
 );
 
-vram vram_r_ch1(        
-        .data(r_vram_in), // 8 bit
-        .wraddress(vram_addr_wr[1]), // 16 bit
-        .wren(vram_write[1]),
-        .wrclock(clk_sys), //
-        .rdaddress(vram_addr_rd[1]),    
-        .rdclock(clk_sys), //
-        .q(vram_rgb_r[1]) // 8 bit
+fifo_vga fifo_g(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_g_in),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write),
+   .q(fifo_rgb_g),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
 );
 
-vram vram_g_ch0(        
-        .data(g_vram_in), // 8 bit
-        .wraddress(vram_addr_wr[0]), // 16 bit
-        .wren(vram_write[0]),
-        .wrclock(clk_sys), //
-        .rdaddress(vram_addr_rd[0]),    
-        .rdclock(clk_sys), //
-        .q(vram_rgb_g[0]) // 8 bit
+fifo_vga fifo_b(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_b_in),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write),
+   .q(fifo_rgb_b),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
 );
 
-vram vram_g_ch1(        
-        .data(g_vram_in), // 8 bit
-        .wraddress(vram_addr_wr[1]), // 16 bit
-        .wren(vram_write[1]),
-        .wrclock(clk_sys), //
-        .rdaddress(vram_addr_rd[1]),    
-        .rdclock(clk_sys), //
-        .q(vram_rgb_g[1]) // 8 bit
-);
 
-vram vram_b_ch0(        
-        .data(b_vram_in), // 8 bit
-        .wraddress(vram_addr_wr[0]), // 16 bit
-        .wren(vram_write[0]),
-        .wrclock(clk_sys), //
-        .rdaddress(vram_addr_rd[0]),    
-        .rdclock(clk_sys), //
-        .q(vram_rgb_b[0]) // 8 bit
-);
-
-vram vram_b_ch1(
-        .data(b_vram_in), // 8 bit
-        .wraddress(vram_addr_wr[1]), // 16 bit
-        .wren(vram_write[1]),
-        .wrclock(clk_sys), //
-        .rdaddress(vram_addr_rd[1]),    
-        .rdclock(clk_sys), //
-        .q(vram_rgb_b[1]) // 8 bit
-);
- 
-// vram write
+// write pixel of fifo
 always@(posedge clk_sys) begin                             
-        
-   if (!vram_init_wr || vram_reset) begin
-     vram_addr_wr[0]     <= 16'd0;  
-     vram_addr_wr[1]     <= 16'd0;      
-     vram_wr_select      <= 1'd0;
-     vram_pixel_counter  <= 24'd0;                                                                                                               
-     vram_dirty_select   <= 1'd0;                             
-     vram_init_wr        <= 1'b1;              
+   		
+   if (vga_reset || vram_reset) begin    
+     vram_pixel_counter  <= 24'd0;                                                                                                                               
    end            
-        
-   vram_write[0] <= 1'b0;
-   vram_write[1] <= 1'b0;                       
    
-   // write vram and swap if fulled 
-   if (vram_ready && vram_req) begin    
-	
-      vram_pixel_counter <= vram_end_frame ? 24'd1 : (vram_pixel_counter + 1'd1);                    
-      
-      if (!vram_free[vram_wr_select]) begin
-        vram_addr_wr[~vram_wr_select] <= vram_addr_wr[~vram_wr_select] + 1'd1;              
-        vram_write[~vram_wr_select]   <= 1'b1;               
-        vram_wr_select <= ~vram_wr_select;
-      end else begin
-        vram_addr_wr[vram_wr_select]  <= vram_addr_wr[vram_wr_select] + 1'd1;
-        vram_write[vram_wr_select]    <= 1'b1;               
-      end    
-		
-   end          
-
-   // clean alternating vram
-   if (vram_dirty[vram_dirty_select]) begin
-     vram_addr_wr[vram_dirty_select] <= 16'd0;
-     vram_dirty_select <= ~vram_dirty_select;        
-   end     
+   fifo_rgb_write <= 1'b0;  	
+                               
+   if (vram_req) begin    	
+     vram_pixel_counter <= vram_end_frame ? 24'd1 : (vram_pixel_counter + 1'd1);                    
+     fifo_rgb_r_in      <= r_vram_in;
+     fifo_rgb_g_in      <= g_vram_in;
+     fifo_rgb_b_in      <= b_vram_in;	  
+     fifo_rgb_write     <= 1'b1;       		
+   end            
         
 end
 
+//vga pixels to get full frame
+always@(posedge clk_sys) begin 
+ if (vga_reset || vram_reset) vga_pixels_frame  <= (H * V) >> interlaced;
+end
 
 // both counters count from the begin of the visibla area
 // horizontal pixel counter
-always@(posedge clk_sys) begin
-
+always@(posedge clk_sys) begin 
+ 
  if (vga_reset || vga_frame_reset) begin        
         vga_vblanks <= 16'd0;
  end    
@@ -252,8 +207,8 @@ always@(posedge clk_sys) begin
  
  if (ce_pix && !vga_reset && !vga_soft_reset) begin                             
         
-   if (vram_active && vram_start && h_cnt == H+HFP && v_cnt <= interlaced) vga_vblanks <= vga_vblanks + 1'd1; //frame counter
-   if (interlaced  && h_cnt == H+HFP && v_cnt <= interlaced) field <= !field;                                 // change field for interlaced          
+   if (vga_started && vram_active && h_cnt == H+HFP && v_cnt <= interlaced) vga_vblanks <= vga_vblanks + 1'd1; //frame counter
+   if (interlaced  && h_cnt == H+HFP && v_cnt <= interlaced) field <= !field;                                  // change field for interlaced          
   
    if (!vga_reset && !vga_soft_reset) begin
      // horizontal counter  
@@ -286,7 +241,7 @@ always@(posedge clk_sys) begin
  
  if (vga_soft_reset) begin  
    v_cnt <= (interlaced && !field) ? V+10'd2 : V+10'd1;  
-        _vs   <= 1'b1;
+   _vs   <= 1'b1;
    vb    <= 1'b1;       
  end 
 
@@ -317,21 +272,21 @@ end
 
 // show pixel
 always@(posedge clk_sys) begin                                                          
-        
-   // initialize array (in SystemVerilog can initialized as literal/aggregate, not in verilog)    
-   if (!vram_init_rd || vram_reset) begin
-     vram_addr_rd[0]   <= 16'd1;  
-     vram_addr_rd[1]   <= 16'd1;                        
-     vram_dirty[0]     <= 1'b0;
-     vram_dirty[1]     <= 1'b0;      
-     vram_rd_select    <= 1'd0;              
+   
+   if (vga_reset) begin
+     vga_started <= 1'b0;	  
+   end	
+	
+   if (vga_reset || vram_reset) begin         
      vram_wait_vblank  <= 1'b1;       
      vram_out_sync     <= 1'b0;           
-     vram_start        <= 1'b0;     
-     vram_init_rd      <= 1'b1;     
+     vram_start        <= 1'b0;             
+	  fifo_ahead        <= 1'b0;	  
    end  
         
    if (vga_wait_vblank) vram_wait_vblank <= 1'b1;
+	
+	fifo_rgb_req  <= 1'b0; 
         
    if (ce_pix) begin  
         
@@ -349,39 +304,39 @@ always@(posedge clk_sys) begin
          end    
        end
                   
-   // vram output  
-   end else begin                                                                                    
-                                                                                                                            
-     if (!vram_start && vram_pixel_counter > 24'd0) begin                                                                                                                                  
-       vram_start       <= 1'b1;                                                               
-       pixel_counter    <= 24'd0;
-     end                             
+     // vram output  
+     end else begin                                                                                    
      
-     // visible area?              
-     if (vga_de && !vram_wait_vblank && vram_start) begin  
-                            
-       pixel_counter <= pixel_counter + 1'd1;                  
-       // get vram pixel and swap if needed for next read
-       pixel <= vram_addr_rd[vram_rd_select] <= vram_addr_wr[vram_rd_select] ? {vram_rgb_r[vram_rd_select],vram_rgb_g[vram_rd_select],vram_rgb_b[vram_rd_select]} : {R_NO_VRAM,G_NO_VRAM,B_NO_VRAM};                           
-       if (vram_addr_rd[vram_rd_select] > vram_addr_wr[vram_rd_select]) vram_out_sync <= 1'b1;
-       if (vram_addr_rd[vram_rd_select] + 1'd1 > VRAM_SIZE) begin
-         vram_dirty[vram_rd_select]   <= 1'b1;                                
-         vram_dirty[~vram_rd_select]  <= 1'b0;
-         vram_addr_rd[vram_rd_select] <= 16'd1;
-         vram_rd_select               <= ~vram_rd_select;
-       end else                          
-         vram_addr_rd[vram_rd_select] <= vram_addr_rd[vram_rd_select] + 1'd1;                         
-                                                                                            
-     end else begin
-       pixel <= 24'h00;  //0v on blanking 
-       if (vb) begin                                             
-         pixel_counter    <= 24'd0;                                                      
-         vram_wait_vblank <= 1'b0;                                       
+       fifo_rgb_req  <= !fifo_ahead && !fifo_rgb_empty ? 1'b1 : 1'b0;
+	    fifo_ahead    <= !fifo_ahead && !fifo_rgb_empty ? 1'b1 : fifo_ahead;
+		 
+       if (!vram_start && vram_pixel_counter > 24'd0) begin                                                                                                                                  
+         vram_start       <= 1'b1; 
+         vga_started		  <= 1'b1; 		
+         pixel_counter    <= 24'd0;
        end                             
-     end  // no visible area               
-   end //vram output       
+     
+       // visible area?              
+       if (vga_de && !vram_wait_vblank && vram_start) begin                              
+         pixel_counter <= pixel_counter + 1'd1;  
+         if (!fifo_ahead) begin		 
+           pixel         <= {R_NO_VRAM, G_NO_VRAM, B_NO_VRAM};
+           vram_out_sync <= 1'b1;
+         end else begin
+           pixel         <= {fifo_rgb_r, fifo_rgb_g, fifo_rgb_b}; 
+           fifo_rgb_req  <= fifo_rgb_empty ? 1'b0 : 1'b1;
+			  fifo_ahead    <= fifo_rgb_empty ? 1'b0 : 1'b1;
+         end		                                                                                                 
+       end else begin
+         pixel <= 24'h00;  //0v on blanking 		
+         if (vb) begin                                             
+           pixel_counter    <= 24'd0;                                                      
+           vram_wait_vblank <= 1'b0;                                       
+         end                             
+       end  // no visible area               
+     end //vram output       
           
-  end // no ce_pix
+   end // no ce_pix
          
 end
 

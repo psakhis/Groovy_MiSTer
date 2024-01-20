@@ -302,6 +302,7 @@ source files.qip
 set_global_assignment -name VERILOG_FILE rtl/lfsr.v
 set_global_assignment -name SDC_FILE Groovy.sdc
 set_global_assignment -name QIP_FILE rtl/vram.qip
+set_global_assignment -name QIP_FILE rtl/fifo_sound.qip
 set_global_assignment -name VERILOG_FILE rtl/hps_ext.v
 set_global_assignment -name VERILOG_FILE rtl/JTFRAME/jtframe_resync.v
 set_global_assignment -name VERILOG_FILE rtl/vga.v
