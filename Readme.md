@@ -11,6 +11,7 @@ https://youtu.be/H0175WJFpUs
 - Switch all modes (progressive/interlaced) reprogramming pll according to modeline
 - Connect with ethernet (can be work on wifi5/6 or Gb lan)
 - Menu options: scandoubler, video position, framebuffer, ..
+  
 To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
 ## Test build features (experimental)
@@ -18,7 +19,8 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 - Double framebuffer for interlaced resolutions (framebuffer per field)
 - More speed and stability fixes (lz4 is recommended for interlaced or 480p)
 - Retroarch support for opengl/vulkan hardware rendered cores like flycast (for dosbox-pure 60fps on core options recommended)
-- Mednafen/Retroarch can work with arcade_31 monitor on swithres.ini 
+- Mednafen/Retroarch can work with arcade_31 monitor on swithres.ini
+  
 To install on your MiSTer you need replace MiSTer binary, so get from /test_builds/ and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
   
