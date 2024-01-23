@@ -32,7 +32,7 @@
 #define mister_CMD_CLOSE 1
 #define mister_CMD_INIT 2
 #define mister_CMD_SWITCHRES 3
-#define mister_CMD_BLIT 4
+#define mister_CMD_AUDIO 4
 #define mister_CMD_GET_STATUS 5
 #define mister_CMD_BLIT_VSYNC 6
 
@@ -57,9 +57,10 @@ typedef union
 } bitByte;
 
 void mister_CmdClose(void);
-void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames);
+void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames, uint32_t sound_rate, uint8_t sound_chan);
 void mister_CmdSwitchres(int w, int h, double vfreq, int orientation);
 void mister_CmdBlit(char *bufferFrame, uint16_t vsync); 
+void mister_CmdAudio(const void *bufferFrame, uint32_t sizeSound, uint8_t soundchan);
  
 void mister_setBlitTime(retro_time_t blitTime);  
  
@@ -67,18 +68,29 @@ int mister_Sync(retro_time_t emulationTime); //Sync emulator with MiSTer raster
 int mister_GetVSyncDif(void); //raster dif. between emulator and MiSTer (usec)
  
 int mister_GetField(void);
+
+bool mister_isInterlaced(void);
+bool mister_is480p(void);
+bool mister_isDownscaled(void);
+uint16_t mister_GetWidth(void);
+uint16_t mister_GetHeight(void);
  
 typedef struct mister_video_info
 { 
  bool isConnected;	
  bool lz4_compress;
  uint32_t frame;
+ uint8_t  frameField;
  uint16_t width;
  uint16_t height;
+ uint16_t width_core;
+ uint16_t height_core;
+ double vfreq_core;
  uint16_t lines; //vtotal
  uint16_t lines_padding; 
  double vfreq;
- uint8_t  interlaced;
+ uint8_t interlaced;
+ uint8_t downscaled;
  uint32_t widthTime; //usec
  uint32_t frameTime; //usec
    
@@ -93,8 +105,6 @@ typedef struct mister_video_info
  uint32_t frameGPU;
  uint16_t vcountGPU;
  
- bool firstField;
- 
  //FPGA debug bits 
  uint8_t fpga_debug_bits;
  uint8_t fpga_vram_end_frame;
@@ -103,7 +113,7 @@ typedef struct mister_video_info
  uint8_t fpga_vga_frameskip;
  uint8_t fpga_vga_vblank;
  uint8_t fpga_vga_f1;
- uint8_t fpga_vram_pixels;
+ uint8_t fpga_audio;
  uint8_t fpga_vram_queue;
  
  //UDP	

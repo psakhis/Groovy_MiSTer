@@ -1,26 +1,45 @@
 #include "mister.h"
+#include "../retroarch.h"
 
 mister_video_t mister_video;
  
 void mister_CmdClose(void)
-{      
+{            
    if (!mister_video.isConnected)	
      return;  
-     
+   
    char buffer[1];        
    buffer[0] = mister_CMD_CLOSE;
-   mister_Send((char*)&buffer[0], 1);     		
+   mister_Send((char*)&buffer[0], 1);     
+  
+#ifdef WIN32
+   closesocket(mister_video.sockfd);
+   WSACleanup();
+#else
+   close(mister_video.sockfd);		
+#endif   
 }
 
-void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames)
+void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames,uint32_t sound_rate, uint8_t sound_chan)
 { 
    if (mister_video.isConnected)	
      return;
      
    char buffer[4];
    
-   sr_init();
+   sr_init();   
    
+   // to do better find ini files
+   const char *_core_name = (const char*)runloop_state_get_ptr()->system.info.library_name;      
+   char ini_file[160];
+   strcpy(ini_file, "config/");
+   strcat(ini_file, _core_name);
+   strcat(ini_file, "/");
+   strcat(ini_file, _core_name);
+   strcat(ini_file, ".switchres.ini");
+   //printf("Core %s\n",ini_file);
+   sr_load_ini(ini_file);
+    
 #ifdef _WIN32
 
    WSADATA wsd;                                           
@@ -104,27 +123,21 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames)
    
    buffer[0] = mister_CMD_INIT;  
    buffer[1] = (lz4_frames) ? 1 : 0; //0-RAW or 1-LZ4 ;    
-      
-   if (lz4_frames > 0)
-   {   	    
-   	uint16_t blockSize = 8192;
-   	buffer[2] = (uint16_t) blockSize & 0xff;
-        buffer[3] = (uint16_t) blockSize >> 8;       
-   }  
-   else
-   {
-   	buffer[2] = 0x00;
-   	buffer[3] = 0x00;
-   }      
+   buffer[2] = (sound_rate == 22050) ? 1 : (sound_rate == 44100) ? 2 : (sound_rate == 48000) ? 3 : 0;  
+   buffer[3] = sound_chan;    
+        
    
    mister_Send(&buffer[0], 4);     
    
    mister_video.lz4_compress = lz4_frames;
    mister_video.width = 0;	   	   
    mister_video.height = 0;
+   mister_video.width_core = 0;	   	   
+   mister_video.height_core = 0;
    mister_video.lines = 0;	 
    mister_video.lines_padding = 0;
    mister_video.vfreq = 0;	  	   
+   mister_video.vfreq_core = 0;	  	   
    mister_video.widthTime = 0;
    mister_video.frameTime = 0;  	  
    mister_video.avgEmulationTime = 0;    
@@ -135,16 +148,26 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames)
    mister_video.frameGPU = 0;
    mister_video.vcountGPU = 0;  
    mister_video.interlaced = 0;
-   mister_video.firstField = false;
-   
+   mister_video.fpga_audio = 0;
+        
    mister_video.isConnected = true;
 }
 
 void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
-{    		
-   if (w == mister_video.width && h == mister_video.height && vfreq == mister_video.vfreq)   
+{  
+   if (!mister_video.isConnected)
+     return;	  		
+    
+   if (w < 200 || h < 200)
+     return;
+     
+   if (w == mister_video.width_core && h == mister_video.height_core && vfreq == mister_video.vfreq_core)   
      return;     
    
+   mister_video.width_core = w;	   	   
+   mister_video.height_core = h;	   
+   mister_video.vfreq_core = vfreq;	
+	   
    unsigned char retSR;
    unsigned char retSR2;
    sr_mode swres_result;
@@ -156,14 +179,28 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
  
    if (orientation)
     sr_mode_flags = sr_mode_flags | SR_MODE_ROTATED;     
-     
+   
    retSR = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_result);  
    if (retSR)
    {
     	printf("[INFO][MISTER] Video_SetSwitchres - result %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_result.width, swres_result.height,swres_result.vfreq, swres_result.x_scale, swres_result.y_scale, swres_result.is_stretched);		   
+   }     
+      
+   if (swres_result.width != w || h > swres_result.height) 
+   {   	   
+   	swres_result.height = (h > swres_result.height) ? h : swres_result.height;   	
+   	sr_set_user_mode(w, swres_result.height, 0); 
+   	retSR2 = sr_add_mode(w, swres_result.height, vfreq, sr_mode_flags, &swres_user);    	
+   	if (retSR2 && swres_user.width == w)
+   	{
+   		printf("[INFO][MISTER] Video_SetSwitchres - user %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_user.width, swres_user.height,swres_user.vfreq, swres_user.x_scale, swres_user.y_scale, swres_user.is_stretched);		   
+   		swres_result = swres_user;
+   		retSR = retSR2;
+   	}
    }
-   if ((swres_result.width != w || swres_result.height != h) && (w!=640 && h!=400)) //dosbox pure¿?
-   {
+   
+   if (swres_result.width == w && h != swres_result.height && h != swres_result.height >> 1) 
+   {   	      	
    	sr_set_user_mode(w, h, 0); 
    	retSR2 = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_user);    	
    	if (retSR2 && swres_user.width == w && swres_user.height == h)
@@ -174,12 +211,12 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
    	}
    }
    
-   if (retSR && swres_result.width >= w && swres_result.height >= h) 
+   if (retSR && (swres_result.width != mister_video.width || swres_result.height != mister_video.height || mister_video.vfreq != swres_result.vfreq)) 
    {   	     	
-	   char buffer[27];   
+	   char buffer[26];   
 	   
 	   double px = (double) swres_result.pclock / 1000000.0;
-	   uint16_t udp_hactive = swres_result.width;;			      
+	   uint16_t udp_hactive = swres_result.width;		      
 	   uint16_t udp_hbegin = swres_result.hbegin;
 	   uint16_t udp_hend = swres_result.hend;
 	   uint16_t udp_htotal = swres_result.htotal;
@@ -187,25 +224,29 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
 	   uint16_t udp_vbegin = swres_result.vbegin;
 	   uint16_t udp_vend = swres_result.vend;
 	   uint16_t udp_vtotal = swres_result.vtotal;
-	   uint8_t  udp_interlace = swres_result.interlace;  
+	   uint8_t  udp_interlace = swres_result.interlace;  	   
          
-	   mister_video.width = w;	   	   
-	   mister_video.height = h;	   
-	   mister_video.lines_padding = udp_vactive - h;
+	   mister_video.width = udp_hactive;	   	   
+	   mister_video.height = udp_vactive;		     	    
+	   mister_video.lines_padding = (udp_vactive > h && udp_vactive != h * 2) ? udp_vactive - h : 0;
 	   mister_video.vfreq = vfreq;
 	   mister_video.lines = udp_vtotal;	  
 	   mister_video.interlaced = udp_interlace;
-	   
-	   if (mister_video.interlaced)
-	   {
-	   	mister_video.firstField = true;	   	  
-	   } 
-	   
+	   mister_video.downscaled = 0;
+	   	  
 	   mister_video.widthTime = round((double) udp_htotal * (1 / px)); //in usec, time to raster 1 line
            mister_video.frameTime = mister_video.widthTime * udp_vtotal;
            
            if (mister_video.interlaced) 
-            mister_video.frameTime = mister_video.frameTime >> 1;
+           {
+            	mister_video.frameField = 0;	
+            	mister_video.frameTime = mister_video.frameTime >> 1;
+           }
+           
+           if (h > mister_video.height) 
+   	   {
+   	   	mister_video.downscaled = 1;
+   	   }	
    
 	   //printf("[INFO][MISTER] Sending CMD_SWITCHRES...\n"); 
 	   buffer[0] = mister_CMD_SWITCHRES;             
@@ -219,14 +260,17 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
 	   memcpy(&buffer[21],&udp_vend,sizeof(udp_vend));
 	   memcpy(&buffer[23],&udp_vtotal,sizeof(udp_vtotal));
 	   memcpy(&buffer[25],&udp_interlace,sizeof(udp_interlace));    
-	   mister_Send(&buffer[0], 27);  
-   }
-   
+	   mister_Send(&buffer[0], 26);  	   	   
+   } 
+      
      
 }
 
 void mister_CmdBlit(char *bufferFrame, uint16_t vsync)
-{          	 	     
+{  
+   if (!mister_video.isConnected)
+    return;	        	   		 	     
+    
    char buffer[9];   
    
    mister_video.frame++;
@@ -255,13 +299,34 @@ void mister_CmdBlit(char *bufferFrame, uint16_t vsync)
    mister_Send(&buffer[0], 9);               
    
    uint32_t bufferSize = (mister_video.interlaced == 0) ? mister_video.width * mister_video.height * 3 : mister_video.width * (mister_video.height >> 1) * 3;
-   
+  
    bufferSize += (mister_video.width * mister_video.lines_padding * 3) >>  mister_video.interlaced; //hack when switchres and core resolution not match
-                    	   
+                  	   
    if (mister_video.lz4_compress == false)
     mister_SendMTU(&bufferFrame[0], bufferSize, 1470);
    else
-    mister_SendLZ4(&bufferFrame[0], bufferSize, blockSize); 	       
+    mister_SendLZ4(&bufferFrame[0], bufferSize, blockSize); 	            
+}
+
+void mister_CmdAudio(const void *bufferFrame, uint32_t sizeSound, uint8_t soundchan)
+{
+   if (!mister_video.isConnected)
+    return;	
+    
+   if (!mister_video.fpga_audio)
+    return;            
+    	
+   char buffer[3];      
+   buffer[0] = mister_CMD_AUDIO;
+     
+   uint16_t bytesSound = sizeSound * soundchan * 2;
+        
+   memcpy(&buffer[1], &bytesSound, sizeof(bytesSound));      
+                         	   	    
+   mister_Send(&buffer[0], 3);                   
+   const uint8_t *data_in = (const uint8_t *)bufferFrame;         
+   
+   mister_SendMTU((char *) &data_in[0], bytesSound, 1472); 
        
 }
 
@@ -331,24 +396,42 @@ int mister_GetVSyncDif(void)
   return diffTime;     	
 }
 
+bool mister_isInterlaced(void)
+{
+	return mister_video.interlaced;
+}
+
+bool mister_is480p(void)
+{
+	return (!mister_video.interlaced && (mister_video.height > 288 || mister_video.height_core == mister_video.height >> 1));
+}
+
+bool mister_isDownscaled(void)
+{
+	return mister_video.downscaled;
+}
+
 int mister_GetField(void)
 {	
 	int field = 0;
 	if (mister_video.interlaced)
 	{
-		if (mister_video.firstField)
-		{
-			field = (mister_video.width > 500) ? 1 : 0; //psx dif mega??
-		}
-		else if (mister_video.vcountGPU % 2 != 0)
-		{
-			field = (mister_video.width > 500) ? 0 : 1;		
-		}	
+		mister_video.frameField = !mister_video.frameField;
+		field = mister_video.frameField;		
 	}
-	mister_video.firstField = false;	   	  
+	   	  
 	return field;
 }
 
+uint16_t mister_GetWidth(void)
+{
+	return mister_video.width;	
+}
+
+uint16_t mister_GetHeight(void)
+{
+	return mister_video.height;	
+}
 //Private
 void mister_Send(void *cmd, int cmdSize)
 { 
@@ -439,7 +522,7 @@ void mister_ReceiveBlitACK(void)
 			mister_video.fpga_vga_frameskip  = bits.u.bit3;   
 			mister_video.fpga_vga_vblank     = bits.u.bit4;   		
 			mister_video.fpga_vga_f1         = bits.u.bit5;   
-			mister_video.fpga_vram_pixels    = bits.u.bit6;
+			mister_video.fpga_audio          = bits.u.bit6;
  			mister_video.fpga_vram_queue     = bits.u.bit7; 		  	
 			//printf("ReceiveBlitACK %d %d / %d %d \n", frameEcho, vcountEcho, frameGPU, vcountGPU);
   		} 

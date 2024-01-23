@@ -7124,7 +7124,7 @@ int runloop_iterate(void)
 #ifdef HAVE_MISTER //psakhis     
    int mister_dif = 0;
    if (settings->bools.video_mister_enable)
-   {       	
+   {       	   	
    	retro_time_t mister_et2  = cpu_features_get_time_usec();         
    	mister_dif = video_mister_sync(mister_et2 - mister_et1);   	   	   	   	  
    }  		
