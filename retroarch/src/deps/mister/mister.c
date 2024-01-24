@@ -37,7 +37,7 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames,
    strcat(ini_file, "/");
    strcat(ini_file, _core_name);
    strcat(ini_file, ".switchres.ini");
-   //printf("Core %s\n",ini_file);
+   printf("[INFO][MISTER] Core switchres configuration on %s...\n",ini_file);
    sr_load_ini(ini_file);
     
 #ifdef _WIN32
@@ -179,12 +179,15 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
  
    if (orientation)
     sr_mode_flags = sr_mode_flags | SR_MODE_ROTATED;     
+      
+   if (w == 480 && h == 272 && mister_is15()) h = 240; //PPSSPP patch 15khz   
+   if (h < 272 && !mister_is15()) h = h << 1; 
    
    retSR = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_result);  
    if (retSR)
    {
     	printf("[INFO][MISTER] Video_SetSwitchres - result %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_result.width, swres_result.height,swres_result.vfreq, swres_result.x_scale, swres_result.y_scale, swres_result.is_stretched);		   
-   }     
+   }           
       
    if (swres_result.width != w || h > swres_result.height) 
    {   	   
@@ -394,6 +397,16 @@ int mister_GetVSyncDif(void)
   }
   
   return diffTime;     	
+}
+
+
+bool mister_is15(void)
+{
+   sr_state swres_state;
+   sr_get_state(&swres_state);
+   
+   return (!strcmp("arcade_15",swres_state.monitor) || !strcmp("generic_15",swres_state.monitor) || !strcmp("ntsc",swres_state.monitor) || !strcmp("pal",swres_state.monitor) || !strcmp("arcade_15_25",swres_state.monitor) || !strcmp("arcade_15_25_31",swres_state.monitor));
+     	
 }
 
 bool mister_isInterlaced(void)

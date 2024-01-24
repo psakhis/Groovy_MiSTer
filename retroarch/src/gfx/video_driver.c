@@ -3924,6 +3924,14 @@ void video_driver_frame(const void *data, unsigned width,
     struct retro_system_av_info *av_info   = &video_st->av_info;
     const struct retro_system_timing *info = (const struct retro_system_timing*)&av_info->timing;   
     audio_driver_state_t *audio_st  = audio_state_get_ptr();
+
+#ifdef HAVE_MENU
+   struct menu_state *menu_st              = menu_state_get_ptr();
+   if (menu_st->flags & MENU_ST_FLAG_ALIVE)
+   {
+   	//menu to do
+   }
+#endif
     
     if (settings->bools.video_mister_enable && audio_st->output_mister && audio_st->output_mister_samples)
     {        					 		 	

@@ -570,9 +570,13 @@ static void audio_driver_flush(
          output_frames       *= sizeof(int16_t);  /* Unit: bytes */
       }
 
-#ifdef HAVE_MISTER //psakhis      
-      memcpy(&audio_st->output_mister_samples_conv_buf[audio_st->output_mister_samples], output_data, output_frames << 1); 
-      audio_st->output_mister_samples += output_frames;           
+#ifdef HAVE_MISTER //psakhis 
+      settings_t *settings   = config_get_ptr();     
+      if (settings->bools.video_mister_enable)
+      {     
+      	memcpy(&audio_st->output_mister_samples_conv_buf[audio_st->output_mister_samples], output_data, output_frames << 1); 
+      	audio_st->output_mister_samples += output_frames;           
+      }	
 #endif
 
       audio_st->current_audio->write(audio_st->context_audio_data,

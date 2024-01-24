@@ -66,7 +66,8 @@ void mister_setBlitTime(retro_time_t blitTime);
  
 int mister_Sync(retro_time_t emulationTime); //Sync emulator with MiSTer raster
 int mister_GetVSyncDif(void); //raster dif. between emulator and MiSTer (usec)
- 
+
+bool mister_is15(void); 
 int mister_GetField(void);
 
 bool mister_isInterlaced(void);
