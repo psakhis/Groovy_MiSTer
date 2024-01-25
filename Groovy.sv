@@ -281,7 +281,7 @@ hps_ext hps_ext
 (
         .clk_sys(clk_sys),
         .EXT_BUS(EXT_BUS),
-		  .state(state),
+        .state(state),
         .hps_rise(1'b1),        
         .hps_verbose(hps_verbose),
         .hps_blit(hps_blit),
@@ -569,7 +569,7 @@ always @(posedge clk_sys) begin
              reset_audio        <= 1'b1;     
              PoC_audio_count    <= audio_samples;                                                              
              ddr_data_req       <= 1'b1;                                           
-	     ddr_addr           <= 28'h1fa4ff;                               
+             ddr_addr           <= 28'h1fa4ff;                               
              ddr_burst          <= 8'd15;                                   
              state              <= 8'd60;                                                               
            end else
@@ -585,9 +585,9 @@ always @(posedge clk_sys) begin
              state              <= 8'd20;                                                                           
            end else begin                            
              auto_blit_fskip    <= 1'b0;			
-             if (vblank_core) vga_frameskip <= 1'b0;                                                                                                                                                                                                                                                   
+             if (vblank_core && vram_queue == 0) vga_frameskip <= 1'b0;                                                                                                                                                                                                                                                   
              if ((cmd_logo || hps_frameskip) && PoC_frame_vram != 0) begin // frameskip?                                                                                                                                                                                                                                                             				             
-	     if (vga_vcount <= PoC_interlaced && vram_queue == 24'd0) begin   // next frame not started to blit
+               if (vga_vcount <= PoC_interlaced && vram_queue == 24'd0) begin   // next frame not started to blit
                  state <= 8'd22;                                                                                        
                end else
                if (!vblank_core) begin           
@@ -595,11 +595,11 @@ always @(posedge clk_sys) begin
                    PoC_px_frameskip <= vga_pixels;                     // pixels needed for next line
                    state            <= 8'd23;    
                  end else                                            
-                  if (vga_vcount + 1 + PoC_interlaced <= PoC_V) begin  // next line is not blitted yet?
-                    PoC_px_frameskip <= (PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_interlaced;  //pixels needed for next line
-                    state            <= 8'd23;    
-                  end        
-                end                                                                    
+                 if (vga_vcount + 1 + PoC_interlaced <= PoC_V) begin  // next line is not blitted yet?
+                   PoC_px_frameskip <= (PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_interlaced;  //pixels needed for next line
+                   state            <= 8'd23;    
+                 end        
+               end                                                                    
              end 
            end                          
          end                             
@@ -624,7 +624,7 @@ always @(posedge clk_sys) begin
                  PoC_frame_ddr       <= ddr_data[23:0];
                  PoC_subframe_px_ddr <= ddr_data[47:24];    
                  PoC_subframe_bl_ddr <= ddr_data[63:48];    
-                 vram_reset          <= !vram_synced;                                                  
+                 vram_reset          <= !vram_synced;					  
                end  
              end                                                                            
              ddr_data_req        <= 1'b0;                                                                                                                 
@@ -637,7 +637,8 @@ always @(posedge clk_sys) begin
            vram_reset <= 1'b0;                                 
            if (PoC_frame_ddr > PoC_frame_vram && PoC_subframe_px_ddr > PoC_subframe_px_vram && PoC_subframe_bl_ddr > PoC_subframe_bl_vram) begin                  
              ddr_addr_next        <= PoC_subframe_px_vram == 0 ? PoC_frame_field ? 28'hfd2ff : 28'hff : ddr_addr_subf;
-             PoC_subframe_bl_vram <= PoC_subframe_bl_ddr;                                
+             PoC_subframe_bl_vram <= PoC_subframe_bl_ddr;
+             vga_wait_vblank	  <= (vram_queue == 0 && !vblank_core)	? 1'b1 : vga_wait_vblank;	 
              state                <= 8'd24;                                                                                                                                
            end else begin                                    
              auto_blit_fskip         <= hps_frameskip ? 1'b1 : 1'b0;     // new blit not applied, try with fskip                                  
@@ -722,7 +723,7 @@ always @(posedge clk_sys) begin
                  
              vram_reset      <= 1'b1;                                                                                                       
              
-             PoC_frame_field	  <= vga_frameskip ? 1'b1 : 1'b0;		//if fskip put pixels on last frame, flag is inverted 
+             PoC_frame_field	  <= (vga_frameskip && ddr_data960[152 +:08] && vram_queue == 0) ? 1'b1 : 1'b0;	//if fskip put pixels on last frame, flag is inverted for interlaced
              PoC_subframe_px_vram <= 24'd0;   
              PoC_subframe_bl_vram <= 16'd0;   
              vga_frameskip        <= 1'b0;     // fskip needs 1 blit
@@ -849,7 +850,7 @@ always @(posedge clk_sys) begin
          end     
          8'd63:  // save sample on fifo sound               
          begin                                                           
-	   sound_write     <= 1'b0;
+           sound_write       <= 1'b0;
            if (PoC_audio_vram == PoC_audio_count) begin   
              state           <= 8'd1;
            end else 
