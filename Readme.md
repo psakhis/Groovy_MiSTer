@@ -15,10 +15,12 @@ https://youtu.be/H0175WJFpUs
 To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
 ## Test build features (experimental)
-- Audio stream (set ON to core options)
+- Audio stream (set ON on audio core options)
 - Double framebuffer for interlaced resolutions (framebuffer per field)
 - More speed and stability fixes (lz4 is recommended for interlaced or 480p)
-- Retroarch support for opengl/vulkan hardware rendered cores like flycast (for dosbox-pure 60fps on core options recommended)
+- Retroarch support for opengl/vulkan hardware rendered cores like flycast
+  * Dosbox-pure set 60fps on core options
+  * Flycast, disable threaded render on core options (or config/Flycast/Flycast.opt reicast_threaded_rendering = "disabled")
 - Mednafen/Retroarch can work with arcade_31 monitor on swithres.ini
   
 To install on your MiSTer you need replace MiSTer binary, so get from /test-builds/ and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
