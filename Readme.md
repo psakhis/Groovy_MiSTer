@@ -22,6 +22,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
   * Dosbox-pure set 60fps on core options
   * Flycast, disable threaded render on core options (or config/Flycast/Flycast.opt reicast_threaded_rendering = "disabled")
 - Mednafen/Retroarch can work with arcade_31 monitor on swithres.ini
+- GroovyMame MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
   
 To install on your MiSTer you need replace MiSTer binary, so get from /test-builds/ and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
