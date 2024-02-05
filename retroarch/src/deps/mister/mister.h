@@ -29,6 +29,8 @@
 
 #include <features/features_cpu.h>
 
+#include "../verbosity.h"
+
 #define mister_CMD_CLOSE 1
 #define mister_CMD_INIT 2
 #define mister_CMD_SWITCHRES 3

@@ -37,7 +37,7 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames,
    strcat(ini_file, "/");
    strcat(ini_file, _core_name);
    strcat(ini_file, ".switchres.ini");
-   printf("[INFO][MISTER] Core switchres configuration on %s...\n",ini_file);
+   RARCH_LOG("[MiSTer] Core switchres configuration on %s...\n", ini_file);
    sr_load_ini(ini_file);
     
 #ifdef _WIN32
@@ -45,18 +45,18 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames,
    WSADATA wsd;                                           
    uint16_t rc;
    
-   printf("[INFO][MISTER] Initialising Winsock...\n");   	
+   RARCH_LOG("[MiSTer] Initialising Winsock...\n");   	
    // Load Winsock
    rc = WSAStartup(MAKEWORD(2, 2), &wsd);
    if (rc != 0) 
    {
-	printf("Unable to load Winsock: %d\n", rc);       
+	RARCH_WARN("Unable to load Winsock: %d\n", rc);       
    }
-	printf("[INFO][MISTER] Initialising socket...\n");  
+	RARCH_LOG("[MiSTer] Initialising socket...\n");  
   	mister_video.sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   	if (mister_video.sockfd < 0)
   	{
-    		printf("socket error\n");       		
+    		RARCH_WARN("socket error\n");       		
   	}  
   	
   	memset(&mister_video.ServerAddr, 0, sizeof(mister_video.ServerAddr));
@@ -64,30 +64,30 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames,
   	mister_video.ServerAddr.sin_port = htons(mister_port);
   	mister_video.ServerAddr.sin_addr.s_addr = inet_addr(mister_host);		
   	
-  	printf("[INFO][MISTER] Setting socket async...\n"); 
+  	RARCH_LOG("[MiSTer] Setting socket async...\n"); 
   	u_long iMode=1;
    	rc = ioctlsocket(mister_video.sockfd, FIONBIO, &iMode); 
    	if (rc < 0)
    	{
-   		printf("set nonblock fail\n");
+   		RARCH_WARN("set nonblock fail\n");
    	}
    	
-   	printf("[INFO][MISTER] Setting send buffer to 2097152 bytes...\n");     
+   	RARCH_LOG("[MiSTer] Setting send buffer to 2097152 bytes...\n");     
    	int optVal = 2097152;  
    	int optLen = sizeof(int);
    	rc = setsockopt(mister_video.sockfd, SOL_SOCKET, SO_SNDBUF, (char*)&optVal, optLen);
    	if (rc < 0)
    	{
-   		printf("set so_sndbuff fail\n");
+   		RARCH_WARN("set so_sndbuff fail\n");
    	}     
                 
 #else
 
-  printf("[INFO][MISTER] Initialising socket...\n");  
+  RARCH_LOG("[MiSTer] Initialising socket...\n");  
   mister_video.sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);				
   if (mister_video.sockfd < 0)
   {
-    	printf("socket error\n");       		
+    	RARCH_WARN("socket error\n");       		
   }        
   
   memset(&mister_video.ServerAddr, 0, sizeof(mister_video.ServerAddr));
@@ -95,31 +95,31 @@ void mister_CmdInit(const char* mister_host, short mister_port, bool lz4_frames,
   mister_video.ServerAddr.sin_port = htons(mister_port);
   mister_video.ServerAddr.sin_addr.s_addr = inet_addr(mister_host);
     
-  printf("[INFO][MISTER] Setting socket async...\n");  
+  RARCH_LOG("[MiSTer] Setting socket async...\n");  
   // Non blocking socket                                                                                                     
   int flags;
   flags = fcntl(mister_video.sockfd, F_GETFD, 0);    	
   if (flags < 0) 
   {
-  	printf("get falg error\n");       		
+  	RARCH_WARN("get falg error\n");       		
   }
   flags |= O_NONBLOCK;
   if (fcntl(mister_video.sockfd, F_SETFL, flags) < 0) 
   {
-  	printf("set nonblock fail\n");       		
+  	RARCH_WARN("set nonblock fail\n");       		
   }   	
   
-  printf("[INFO][MISTER] Setting send buffer to 2097152 bytes...\n");    		     	    	        	 	    		    	    		
+  RARCH_LOG("[MiSTer] Setting send buffer to 2097152 bytes...\n");    		     	    	        	 	    		    	    		
   // Settings	
   int size = 2 * 1024 * 1024;	
   if (setsockopt(mister_video.sockfd, SOL_SOCKET, SO_SNDBUF, (void*)&size, sizeof(size)) < 0)     
   {
-  	printf("Error so_sndbuff\n");        	
+  	RARCH_WARN("Error so_sndbuff\n");        	
   }  
          
 #endif  
    
-   printf("[INFO][MISTER] Sending CMD_INIT...\n");
+   RARCH_LOG("[MiSTer] Sending CMD_INIT...lz4 %d sound_rate %d sound_chan %d\n", lz4_frames, sound_rate, sound_chan);
    
    buffer[0] = mister_CMD_INIT;  
    buffer[1] = (lz4_frames) ? 1 : 0; //0-RAW or 1-LZ4 ;    
@@ -158,7 +158,7 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
    if (!mister_video.isConnected)
      return;	  		
     
-   if (w < 200 || h < 200)
+   if (w < 200 || h < 160)
      return;
      
    if (w == mister_video.width_core && h == mister_video.height_core && vfreq == mister_video.vfreq_core)   
@@ -168,10 +168,8 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
    mister_video.height_core = h;	   
    mister_video.vfreq_core = vfreq;	
 	   
-   unsigned char retSR;
-   unsigned char retSR2;
-   sr_mode swres_result;
-   sr_mode swres_user;
+   unsigned char retSR;   
+   sr_mode swres_result;  
    int sr_mode_flags = 0; 
     
    if (h > 288) 
@@ -179,41 +177,18 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
  
    if (orientation)
     sr_mode_flags = sr_mode_flags | SR_MODE_ROTATED;     
-      
-   if (w == 480 && h == 272 && mister_is15()) h = 240; //PPSSPP patch 15khz   
-   if (h < 272 && !mister_is15()) h = h << 1; 
+   
+   RARCH_LOG("[MiSTer] Video_SetSwitchres - (in %dx%d@%f)\n", w, h, vfreq);		   
+          
+   if (h < 288 && !mister_is15()) h = h << 1; //fix width
+   if (h > 288 && h <= 400 && mister_is15()) h = 480; //fix height dosbox-pure
    
    retSR = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_result);  
    if (retSR)
    {
-    	printf("[INFO][MISTER] Video_SetSwitchres - result %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_result.width, swres_result.height,swres_result.vfreq, swres_result.x_scale, swres_result.y_scale, swres_result.is_stretched);		   
+    	RARCH_LOG("[MiSTer] Video_SetSwitchres - (result %dx%d@%f) - x=%.4f y=%.4f stretched(%d)\n", swres_result.width, swres_result.height,swres_result.vfreq, swres_result.x_scale, swres_result.y_scale, swres_result.is_stretched);		   
    }           
-      
-   if (swres_result.width != w || h > swres_result.height) 
-   {   	   
-   	swres_result.height = (h > swres_result.height) ? h : swres_result.height;   	
-   	sr_set_user_mode(w, swres_result.height, 0); 
-   	retSR2 = sr_add_mode(w, swres_result.height, vfreq, sr_mode_flags, &swres_user);    	
-   	if (retSR2 && swres_user.width == w)
-   	{
-   		printf("[INFO][MISTER] Video_SetSwitchres - user %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_user.width, swres_user.height,swres_user.vfreq, swres_user.x_scale, swres_user.y_scale, swres_user.is_stretched);		   
-   		swres_result = swres_user;
-   		retSR = retSR2;
-   	}
-   }
-   
-   if (swres_result.width == w && h != swres_result.height && h != swres_result.height >> 1) 
-   {   	      	
-   	sr_set_user_mode(w, h, 0); 
-   	retSR2 = sr_add_mode(w, h, vfreq, sr_mode_flags, &swres_user);    	
-   	if (retSR2 && swres_user.width == w && swres_user.height == h)
-   	{
-   		printf("[INFO][MISTER] Video_SetSwitchres - user %dx%d@%f - x=%.4f y=%.4f stretched(%d)\n", swres_user.width, swres_user.height,swres_user.vfreq, swres_user.x_scale, swres_user.y_scale, swres_user.is_stretched);		   
-   		swres_result = swres_user;
-   		retSR = retSR2;
-   	}
-   }
-   
+
    if (retSR && (swres_result.width != mister_video.width || swres_result.height != mister_video.height || mister_video.vfreq != swres_result.vfreq)) 
    {   	     	
 	   char buffer[26];   
@@ -251,7 +226,7 @@ void mister_CmdSwitchres(int w, int h, double vfreq, int orientation)
    	   	mister_video.downscaled = 1;
    	   }	
    
-	   //printf("[INFO][MISTER] Sending CMD_SWITCHRES...\n"); 
+           RARCH_LOG("[MiSTer] Sending CMD_SWITCHRES...\n");		   	  
 	   buffer[0] = mister_CMD_SWITCHRES;             
 	   memcpy(&buffer[1],&px,sizeof(px));
 	   memcpy(&buffer[9],&udp_hactive,sizeof(udp_hactive));
@@ -372,13 +347,13 @@ int mister_Sync(retro_time_t emulationTime)
 int mister_GetVSyncDif(void)
 {
   uint32_t prevFrameEcho = mister_video.frameEcho;	    
-  int diffTime = 0;  
+  int diffTime = 0;      
   
   if (mister_video.frame != mister_video.frameEcho) //some ack is pending
   {
   	mister_ReceiveBlitACK();   
-  }
-         
+  }   
+       
   if (prevFrameEcho != mister_video.frameEcho) //if ack is updated, check raster difference
   {	  	
   	//horror patch if emulator freezes to align frame counter

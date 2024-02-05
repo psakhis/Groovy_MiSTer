@@ -3924,11 +3924,14 @@ void video_driver_frame(const void *data, unsigned width,
     struct retro_system_av_info *av_info   = &video_st->av_info;
     const struct retro_system_timing *info = (const struct retro_system_timing*)&av_info->timing;   
     audio_driver_state_t *audio_st  = audio_state_get_ptr();
-
+    bool blitMister = false;
+    
 #ifdef HAVE_MENU
    struct menu_state *menu_st              = menu_state_get_ptr();
    if (menu_st->flags & MENU_ST_FLAG_ALIVE)
    {
+   	blitMister = false;   	 
+        
    	//menu to do
    }
 #endif
@@ -3939,7 +3942,7 @@ void video_driver_frame(const void *data, unsigned width,
 	audio_st->output_mister_samples = 0;			
     }  
     
-    if (settings->bools.video_mister_enable && video_st->frame_count > 0 )
+    if (settings->bools.video_mister_enable && video_st->frame_count > 0 && !blitMister)
     {      	    	        
         mister_CmdInit(settings->arrays.mister_ip, 32100, settings->bools.mister_lz4, settings->uints.audio_output_sample_rate, 2);                       	               	        
        	mister_CmdSwitchres(width, height, video_st->core_hz, retroarch_get_rotation());       	       
@@ -3961,10 +3964,9 @@ void video_driver_frame(const void *data, unsigned width,
         uint8_t *mister_buffer = (uint8_t*)malloc(1024 * 768 * 3);           
     	unsigned c = 0;   
     	
-        uint8_t field = 0; 
-        bool blitMister = false;
+        uint8_t field = 0;         
                         
-   	if (mister_buffer && video_st->frame_cache_data != RETRO_HW_FRAME_BUFFER_VALID && pitch > 0) //software rendered   	   	 	
+   	if (!blitMister && mister_buffer && video_st->frame_cache_data != RETRO_HW_FRAME_BUFFER_VALID && pitch > 0) //software rendered   	   	 	
    	{   		
    		field = mister_GetField();
    		blitMister = true;
