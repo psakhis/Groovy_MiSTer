@@ -64,7 +64,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /test-buil
 ### Retroarch (Dreamcast non working atm) 
 Menu isn't adapted, so start with retroach.exe -L cores/xxxx.dll file
   
-  on retroarch.cfg set:
+  on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
     mister_lz4 = "true"
