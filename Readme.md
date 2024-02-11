@@ -31,7 +31,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /test-buil
 
 ### GroovyMAME
  for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases/tag/gm0261sr002z
- ,to activate new MiSTer backend set on command line args:
+ ,to activate new MiSTer backend set on with (you can edit it on mame.ini or like arguments):
   
     -video mister 
     -aspect 4:3 
