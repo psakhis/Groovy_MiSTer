@@ -31,7 +31,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /test-buil
 
 ### GroovyMAME
  for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases/tag/gm0261sr002z
- ,to activate new MiSTer backend set on command line args:
+ ,to activate new MiSTer backend set on with (note: you can edit it on mame.ini or like arguments):
   
     -video mister 
     -aspect 4:3 
@@ -64,7 +64,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /test-buil
 ### Retroarch (Dreamcast non working atm) 
 Menu isn't adapted, so start with retroach.exe -L cores/xxxx.dll file
   
-  on retroarch.cfg set:
+  on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
     mister_lz4 = "true"
