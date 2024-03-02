@@ -11,10 +11,6 @@ https://youtu.be/H0175WJFpUs
 - Switch all modes (progressive/interlaced) reprogramming pll according to modeline
 - Connect with ethernet (can be work on wifi5/6 or Gb lan)
 - Menu options: scandoubler, video position, framebuffer, ..
-  
-To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
-
-## Test build features (experimental)
 - Audio stream (set ON on audio core options)
 - Double framebuffer for interlaced resolutions (framebuffer per field)
 - More speed and stability fixes (lz4 is recommended for interlaced or 480p)
@@ -23,6 +19,11 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
   * Flycast, disable threaded render on core options (or config/Flycast/Flycast.opt reicast_threaded_rendering = "disabled")
 - Mednafen/Retroarch can work with arcade_31 monitor on swithres.ini
 - GroovyMame MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
+  
+To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
+
+## Test build features (experimental)
+- (20240203) New native LZ4 blitting inside FPGA (atm only mednafen is supported)
   
 To install on your MiSTer you need replace MiSTer binary, so get from /test-builds/ and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
@@ -56,7 +57,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /test-buil
   
     mister.host 192.x.x.x
     mister.port 32100
-    mister.lz4 1 (raw or lz4)
+    mister.lz4 1 (0-raw, 1-lz4 or 2-lz4hc)
     mister.vsync 0 (automatic frame delay)
     video.resolution_switch mister
   
