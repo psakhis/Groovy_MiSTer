@@ -58,7 +58,7 @@ module fifo_vga (
 	output	[7:0]  q;
 	output	  rdempty;
 	output	  wrfull;
-	output	[17:0]  wrusedw;
+	output	[15:0]  wrusedw;
 `ifndef ALTERA_RESERVED_QIS
 // synopsys translate_off
 `endif
@@ -70,11 +70,11 @@ module fifo_vga (
 	wire [7:0] sub_wire0;
 	wire  sub_wire1;
 	wire  sub_wire2;
-	wire [17:0] sub_wire3;
+	wire [15:0] sub_wire3;
 	wire [7:0] q = sub_wire0[7:0];
 	wire  rdempty = sub_wire1;
 	wire  wrfull = sub_wire2;
-	wire [17:0] wrusedw = sub_wire3[17:0];
+	wire [15:0] wrusedw = sub_wire3[15:0];
 
 	dcfifo	dcfifo_component (
 				.aclr (aclr),
@@ -94,11 +94,11 @@ module fifo_vga (
 	defparam
 		dcfifo_component.add_usedw_msb_bit = "ON",
 		dcfifo_component.intended_device_family = "Cyclone V",
-		dcfifo_component.lpm_numwords = 131072,
+		dcfifo_component.lpm_numwords = 32768,
 		dcfifo_component.lpm_showahead = "OFF",
 		dcfifo_component.lpm_type = "dcfifo",
 		dcfifo_component.lpm_width = 8,
-		dcfifo_component.lpm_widthu = 18,
+		dcfifo_component.lpm_widthu = 16,
 		dcfifo_component.overflow_checking = "ON",
 		dcfifo_component.rdsync_delaypipe = 4,
 		dcfifo_component.read_aclr_synch = "OFF",
@@ -119,7 +119,7 @@ endmodule
 // Retrieval info: PRIVATE: AlmostFullThr NUMERIC "-1"
 // Retrieval info: PRIVATE: CLOCKS_ARE_SYNCHRONIZED NUMERIC "0"
 // Retrieval info: PRIVATE: Clock NUMERIC "4"
-// Retrieval info: PRIVATE: Depth NUMERIC "131072"
+// Retrieval info: PRIVATE: Depth NUMERIC "32768"
 // Retrieval info: PRIVATE: Empty NUMERIC "1"
 // Retrieval info: PRIVATE: Full NUMERIC "1"
 // Retrieval info: PRIVATE: INTENDED_DEVICE_FAMILY STRING "Cyclone V"
@@ -148,11 +148,11 @@ endmodule
 // Retrieval info: LIBRARY: altera_mf altera_mf.altera_mf_components.all
 // Retrieval info: CONSTANT: ADD_USEDW_MSB_BIT STRING "ON"
 // Retrieval info: CONSTANT: INTENDED_DEVICE_FAMILY STRING "Cyclone V"
-// Retrieval info: CONSTANT: LPM_NUMWORDS NUMERIC "131072"
+// Retrieval info: CONSTANT: LPM_NUMWORDS NUMERIC "32768"
 // Retrieval info: CONSTANT: LPM_SHOWAHEAD STRING "OFF"
 // Retrieval info: CONSTANT: LPM_TYPE STRING "dcfifo"
 // Retrieval info: CONSTANT: LPM_WIDTH NUMERIC "8"
-// Retrieval info: CONSTANT: LPM_WIDTHU NUMERIC "18"
+// Retrieval info: CONSTANT: LPM_WIDTHU NUMERIC "16"
 // Retrieval info: CONSTANT: OVERFLOW_CHECKING STRING "ON"
 // Retrieval info: CONSTANT: RDSYNC_DELAYPIPE NUMERIC "4"
 // Retrieval info: CONSTANT: READ_ACLR_SYNCH STRING "OFF"
@@ -169,7 +169,7 @@ endmodule
 // Retrieval info: USED_PORT: wrclk 0 0 0 0 INPUT NODEFVAL "wrclk"
 // Retrieval info: USED_PORT: wrfull 0 0 0 0 OUTPUT NODEFVAL "wrfull"
 // Retrieval info: USED_PORT: wrreq 0 0 0 0 INPUT NODEFVAL "wrreq"
-// Retrieval info: USED_PORT: wrusedw 0 0 18 0 OUTPUT NODEFVAL "wrusedw[17..0]"
+// Retrieval info: USED_PORT: wrusedw 0 0 16 0 OUTPUT NODEFVAL "wrusedw[15..0]"
 // Retrieval info: CONNECT: @aclr 0 0 0 0 aclr 0 0 0 0
 // Retrieval info: CONNECT: @data 0 0 8 0 data 0 0 8 0
 // Retrieval info: CONNECT: @rdclk 0 0 0 0 rdclk 0 0 0 0
@@ -179,11 +179,11 @@ endmodule
 // Retrieval info: CONNECT: q 0 0 8 0 @q 0 0 8 0
 // Retrieval info: CONNECT: rdempty 0 0 0 0 @rdempty 0 0 0 0
 // Retrieval info: CONNECT: wrfull 0 0 0 0 @wrfull 0 0 0 0
-// Retrieval info: CONNECT: wrusedw 0 0 18 0 @wrusedw 0 0 18 0
-// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga2.v TRUE
-// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga2.inc FALSE
-// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga2.cmp FALSE
-// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga2.bsf FALSE
-// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga2_inst.v FALSE
-// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga2_bb.v FALSE
+// Retrieval info: CONNECT: wrusedw 0 0 16 0 @wrusedw 0 0 16 0
+// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga.v TRUE
+// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga.inc FALSE
+// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga.cmp FALSE
+// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga.bsf FALSE
+// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga_inst.v FALSE
+// Retrieval info: GEN_FILE: TYPE_NORMAL fifo_vga_bb.v FALSE
 // Retrieval info: LIB_FILE: altera_mf

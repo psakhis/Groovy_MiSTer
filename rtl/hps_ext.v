@@ -48,7 +48,25 @@ module hps_ext
     output reg        cmd_logo = 0,
     output reg        cmd_audio = 0,
     input             reset_audio,
-    output reg [15:0] audio_samples = 0
+    output reg [15:0] audio_samples = 0,
+	   input             reset_blit_lz4,
+	   output reg        cmd_blit_lz4 = 0,
+	   output reg [31:0] lz4_size = 0,
+    output reg        lz4_AB = 0
+/* DEBUG
+    input      [23:0] PoC_frame_lz4,    
+    input      [23:0] PoC_subframe_lz4_bytes,	  
+    input      [15:0] PoC_subframe_blit_lz4,	  
+    input      [31:0] lz4_uncompressed_bytes,
+    input      [31:0] lz4_gravats,
+    input      [31:0] lz4_llegits,
+    input      [3:0]  lz4_state,
+    input             lz4_done,
+    input             lz4_paused,
+    input             lz4_run,
+    input      [7:0]  lz4_burst,
+ */
+    
  );
 
 assign EXT_BUS[15:0] = io_dout;
@@ -58,7 +76,7 @@ wire io_strobe = EXT_BUS[33];
 wire io_enable = EXT_BUS[34];
 
 localparam EXT_CMD_MIN = GET_GROOVY_STATUS;
-localparam EXT_CMD_MAX = SET_AUDIO;
+localparam EXT_CMD_MAX = SET_BLIT_LZ4_B;
 
 localparam GET_GROOVY_STATUS = 'hf0;
 localparam GET_GROOVY_HPS    = 'hf1;
@@ -67,6 +85,8 @@ localparam SET_SWITCHRES     = 'hf3;
 localparam SET_BLIT          = 'hf4;
 localparam SET_LOGO          = 'hf5;
 localparam SET_AUDIO         = 'hf6;
+localparam SET_BLIT_LZ4_A    = 'hf7;
+localparam SET_BLIT_LZ4_B    = 'hf8;
 
 reg [15:0] io_dout;
 reg        dout_en = 0;
@@ -95,7 +115,8 @@ always@(posedge clk_sys) begin
         
         if (reset_switchres) cmd_switchres <= 1'b0;     
         if (reset_blit)      cmd_blit      <= 1'b0;       
-        if (reset_audio)     cmd_audio     <= 1'b0;		  
+        if (reset_audio)     cmd_audio     <= 1'b0;		  			     
+		      if (reset_blit_lz4)  cmd_blit_lz4  <= 1'b0;		  			      
         
         if(~io_enable) begin
                 dout_en <= 0;
@@ -119,6 +140,8 @@ always@(posedge clk_sys) begin
                         if(io_din == SET_BLIT)          io_dout <= hps_rise_req;                                        
                         if(io_din == SET_LOGO)          io_dout <= hps_rise_req;                                        
                         if(io_din == SET_AUDIO)         io_dout <= hps_rise_req;                                        
+								                if(io_din == SET_BLIT_LZ4_A)    io_dout <= hps_rise_req;  
+                        if(io_din == SET_BLIT_LZ4_B)    io_dout <= hps_rise_req;                                                                              
                 end else begin
               
                         case(cmd)
@@ -143,7 +166,21 @@ always@(posedge clk_sys) begin
                                            4: io_dout <= hps_vram_pixels[15:0];                                            
                                            5: io_dout <= {(state == 8'd0) ? 1'b0 : 1'b1, hps_audio, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready, hps_vram_pixels[23:16]};    
                                            6: io_dout <= hps_vram_queue[15:0];
-                                           7: io_dout <= {8'd0, hps_vram_queue[23:16]};                                        														                                 
+                                           7: io_dout <= {8'd0, hps_vram_queue[23:16]};                                
+/* DEBUG                                 	                                          
+                                           8: io_dout <= PoC_frame_lz4[15:0];
+                                           9: io_dout <= {8'd0, PoC_frame_lz4[23:16]};   												 
+                                          10: io_dout <= PoC_subframe_lz4_bytes[15:0];
+                                          11: io_dout <= {8'd0, PoC_subframe_lz4_bytes[23:16]}; 
+                                          12: io_dout <= PoC_subframe_blit_lz4;
+														                            13: io_dout <= lz4_uncompressed_bytes[15:0];												 
+													                             14: io_dout <= lz4_uncompressed_bytes[31:16];
+                                          15: io_dout <= lz4_gravats[15:0];												 
+													                             16: io_dout <= lz4_gravats[31:16];
+                                          17: io_dout <= lz4_llegits[15:0];												 
+													                             18: io_dout <= lz4_llegits[31:16];
+                                          19: io_dout <= {lz4_burst, 1'd0, lz4_run, lz4_paused, lz4_done, lz4_state};
+*/
                                         endcase
                                                 
                                GET_GROOVY_HPS: case(byte_cnt)
@@ -182,7 +219,27 @@ always@(posedge clk_sys) begin
                                                cmd_audio     <= 1'b1;
                                                audio_samples <= io_din;                      
                                              end  
-                                           endcase                                        
+                                           endcase 
+														 
+										                      SET_BLIT_LZ4_A: case(byte_cnt)
+                                           1: lz4_size[15:0] <= io_din;                                          
+                                           2:
+                                           begin
+                                              lz4_size[31:16] <= io_din;
+                                              lz4_AB          <= 1'b0;
+                                              cmd_blit_lz4    <= 1'b1;
+                                           end                                                                                                                  
+                                         endcase 		
+                                
+                                SET_BLIT_LZ4_B: case(byte_cnt)
+                                           1: lz4_size[15:0] <= io_din;                                          
+                                           2:
+                                           begin
+                                              lz4_size[31:16] <= io_din;
+                                              lz4_AB          <= 1'b1;
+                                              cmd_blit_lz4    <= 1'b1;
+                                           end                                                                                                                  
+                                         endcase 		 
                                                                         
                        endcase
                 end

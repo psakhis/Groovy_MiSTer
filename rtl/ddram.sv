@@ -18,7 +18,6 @@
 //
 // ------------------------------------------
 //
-// 24b version
 
 module ddram
 (
@@ -34,31 +33,23 @@ module ddram
         output        DDRAM_WE,
         
         input  [27:1] mem_addr,
-        output [63:0] mem_dout,
-        input         mem_dout_ch,   
+        output [63:0] mem_dout,        
         input  [63:0] mem_din,
-        input         mem_rd,
-        input         mem_rd_ch,        
-        input  [7:0]  mem_burst,
+        input         mem_rd,              
+        input  [7:0]  mem_burst,            
         input         mem_wr,           
         output        mem_busy,
-        output        mem_dready,
-        
-                        
-        output [959:0] mem960_dout
-                                        
+        output        mem_dready                                                                          
 );
 
 reg  [7:0] ram_burst;
 reg [63:0] ram_out;
-reg[959:0] ram_out960[2] = '{2{0}};
 reg [63:0] ram_data;
 reg [27:1] ram_address;
 
 reg        ram_read = 0;
 reg        ram_write = 0;
 reg  [7:0] ram_be = 8'hFF;
-reg        ram_ch = 0;
 reg  [7:0] ram_index = 0;
 
 reg data_ready = 0;
@@ -71,68 +62,55 @@ always @(posedge DDRAM_CLK) begin
         
         reg old_rd, old_we;
         
-        old_rd       <= mem_rd; 
-        old_we       <= mem_wr;  
+        old_rd <= mem_rd; 
+      //  old_we <= mem_wr;  
    
-        if (mem_wr && !old_we) write_req <= 1; 
-        if (mem_rd && !old_rd) read_req <= 1; 
+      //  if (mem_wr && !old_we) write_req <= 1'b1; 
+        if (mem_rd && !old_rd) read_req  <= 1'b1; 
         
-        data_ready <= 0;        
+        data_ready <= 1'b0;        
         
         if(!DDRAM_BUSY) begin    
-                ram_write <= 0;
-                ram_read  <= 0;
+                ram_write <= 1'b0;
+                ram_read  <= 1'b0;
                 
                 case(state)
                         3'b000: 
                         begin                                
-                          if (write_req && !read_req) begin                                                 
+                         // if (write_req && !read_req) begin                                                 
+                          if (mem_wr && !read_req) begin                                                 
                             ram_data      <= mem_din; 
                             ram_address   <= mem_addr; 
-                            ram_write     <= 1;                                          
-                            state         <= 3'b001;                       
+                            ram_write     <= 1'b1;                                          
+                           // state         <= 3'b001;                       
+                            state         <= 3'b000;                       
                           end                            
                            else if (read_req && !write_req) begin                           
-                            ram_address   <= mem_addr;                                                                                     
-                            ram_ch        <= mem_rd_ch;
-                            ram_read      <= 1;                     
-                            ram_burst     <= mem_burst;                                                                             
+                            ram_address   <= mem_addr;                                                                                                              
+                            ram_read      <= 1'b1;                     
+                            ram_burst     <= mem_burst;      
+                            ram_index     <= 8'd1;                                                                  
                             state         <= 3'b010;
                            end                                                                                                            
                         end      
                         3'b001:        
-                        begin                                   
-                           write_req                        <= 0;
+                        begin                               
+                           write_req           <= 1'b0;
                            state               <= 3'b000;                                                                       
                         end                     
-                        3'b010:         
+                        3'b010:                
                         begin  
-                          if (DDRAM_DOUT_READY) begin
-                           ram_out                    <= DDRAM_DOUT;
-                           ram_out960[ram_ch][63:0]   <= DDRAM_DOUT;       
-                           if (ram_burst > 8'd1) begin
-                             state                    <= 3'b100;   
-                             ram_index                <= 8'd2;                              
-                            end else begin
-                             state                    <= 3'b000;
-                             data_ready               <= 1;                
-                             read_req                 <= 0;              
-                            end                                               
-                          end
-                        end
-                        3'b100:         
-                        begin  
-                          if (DDRAM_DOUT_READY) begin
-                            ram_out960[ram_ch][((ram_index-1) << 6) +:64] <= DDRAM_DOUT;
+                          if (DDRAM_DOUT_READY) begin   
+                            data_ready                <= 1'b1;
+                            ram_out                   <= DDRAM_DOUT;                         
                             if (ram_index == ram_burst) begin
-                              state                   <= 3'b000;
-                              data_ready              <= 1;                
-                              read_req                <= 0;               
+                              state                   <= 3'b000;                                            
+                              read_req                <= 1'b0;               
                             end else begin
-                              ram_index <= ram_index + 8'd1;
+                              ram_index               <= ram_index + 8'd1;
                             end                             
                           end    
-                        end                               
+                        end                                                 
                 endcase
         end 
    
@@ -147,9 +125,9 @@ assign DDRAM_DIN      = ram_data;
 assign DDRAM_WE       = ram_write;
 
 assign mem_dout         = ram_out;
-assign mem960_dout      = ram_out960[mem_dout_ch];
 assign mem_dready       = data_ready;
-assign mem_busy         = write_req || read_req;
+//assign mem_busy         = write_req || read_req;
+assign mem_busy         = mem_wr || read_req;
 
 
 endmodule
