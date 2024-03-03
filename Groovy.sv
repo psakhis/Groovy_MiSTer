@@ -154,7 +154,9 @@ module emu
         input   [6:0] USER_IN,
         output  [6:0] USER_OUT,
 
-        input         OSD_STATUS
+        input         OSD_STATUS, 
+
+        output        PWM_EN          //wait to see on framework someday
 );
 
 ///////// Default values for ports not used in this core /////////
@@ -179,6 +181,8 @@ assign LED_DISK = 0;
 assign LED_POWER = 0;
 assign LED_USER = 0;
 assign BUTTONS = 0;
+
+assign PWM_EN = hps_pwm;
 
 
 wire [1:0] ar = status[2:1];
@@ -207,6 +211,7 @@ localparam CONF_STR = {
    "P1O[26:22],Analog Video V-Pos,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1;",  
    "P1-;",
    "P1O[32],Volatile Framebuffer,Off,On;", 
+   "P1O[37],PWM,Off,On;",
    "P2,Audio Settings;",
    "P2O[34],Audio,Off,On;",
    "P2O[36:35],Desired buffer (ms),0,16,32,64;",   
@@ -245,6 +250,7 @@ wire        hps_screensaver = status[33];
 wire        hps_frameskip = !hps_volatile_fb;
 wire        hps_audio = status[34];
 wire [1:0]  hps_audio_buffer = status[36:35];
+wire        hps_pwm = status[37];
 
 wire [39:0] status;
 wire [31:0] joy;

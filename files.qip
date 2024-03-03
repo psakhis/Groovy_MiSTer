@@ -1,4 +1,5 @@
-set_global_assignment -name VERILOG_FILE rtl/lfsr.v
+#set_global_assignment -name VERILOG_FILE rtl/lfsr.v
+set_global_assignment -name VERILOG_FILE sys/vga_pwm.v
 set_global_assignment -name SDC_FILE Groovy.sdc
 set_global_assignment -name QIP_FILE rtl/fifo_vga.qip
 set_global_assignment -name QIP_FILE rtl/fifo_sound.qip
