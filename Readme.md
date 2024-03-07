@@ -23,7 +23,8 @@ https://youtu.be/H0175WJFpUs
 To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
 ## Test build features (experimental)
-- (20240203) New native LZ4 blitting inside FPGA (atm only mednafen is supported)
+- (20240302) New native LZ4 blitting inside FPGA (atm only mednafen is supported)
+- (20240302) New PWM core option (implemented by https://github.com/Jokippo)
   
 To install on your MiSTer you need replace MiSTer binary, so get from /test-builds/ and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
