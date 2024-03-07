@@ -21,7 +21,7 @@
 #include "../lz4/lz4.h"
 #include "../lz4/lz4hc.h"
 
-#define USE_RIO 1
+#define USE_RIO 0
 
 #define LOG(sev,fmt, ...) do {\
 			        if (sev <= m_verbose) {\
@@ -80,14 +80,16 @@ GroovyMister::GroovyMister()
 	
 	DWORD totalBufferCount = 0;
    	DWORD totalBufferSize = 0;   	
-   	pBufferStream = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount); 
+   	pBufferBlit  = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount); 
+   	pBufferAudio = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount); 
    	m_pBufferLZ4 = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);    	
 }
 
 
 GroovyMister::~GroovyMister()
 {
-  	free(pBufferStream);
+  	free(pBufferBlit);
+  	free(pBufferAudio);
   	free(m_pBufferLZ4);  	
 }
 
@@ -96,10 +98,14 @@ void GroovyMister::CmdClose(void)
    m_bufferSend[0] = CMD_CLOSE;
    Send(&m_bufferSend[0], 1);         
 #ifdef WIN32
+if (USE_RIO)
+{
    m_rio.RIOCloseCompletionQueue(m_sendQueue);
    m_rio.RIOCloseCompletionQueue(m_receiveQueue);
    m_rio.RIODeregisterBuffer(m_sendRioBufferId);	
-   m_rio.RIODeregisterBuffer(m_sendRioBufferStreamId);
+   m_rio.RIODeregisterBuffer(m_sendRioBufferBlitId);
+   m_rio.RIODeregisterBuffer(m_sendRioBufferAudioId);
+}   
    ::closesocket(m_sockFD);
    ::WSACleanup();
 #else
@@ -184,32 +190,49 @@ if (USE_RIO)
     	m_receiveRioBuffer.Offset = 0;
     	m_receiveRioBuffer.Length = 13;
     	
-        if (lz4Frames)
-        {
-        	m_sendRioBufferStreamId = m_rio.RIORegisterBuffer(m_pBufferLZ4, BUFFER_SIZE);					
-        }	
-        else
-        {		
-		m_sendRioBufferStreamId = m_rio.RIORegisterBuffer(pBufferStream, BUFFER_SIZE);					
-	}	
-	if (m_sendRioBufferStreamId == RIO_INVALID_BUFFERID)
+    	if (lz4Frames)
+    	{    		
+		m_sendRioBufferBlitId = m_rio.RIORegisterBuffer(m_pBufferLZ4, BUFFER_SIZE);
+	}
+	else
+	{
+		m_sendRioBufferBlitId = m_rio.RIORegisterBuffer(pBufferBlit, BUFFER_SIZE);								
+	}
+	if (m_sendRioBufferBlitId == RIO_INVALID_BUFFERID)
     	{
-        	LOG(0,"[MiSTer] RIORegisterBuffer pBufferRGB Error: %lu\n", ::GetLastError());        		
+        	LOG(0,"[MiSTer] RIORegisterBuffer pBufferBlit Error: %lu\n", ::GetLastError());        		
     	}        		
-        
+	        
         DWORD offset = 0;			    											    	    		    		    		 	    		    	
-    	m_pBufs = new RIO_BUF[BUFFER_SLICES];
-    		
+    	m_pBufsBlit = new RIO_BUF[BUFFER_SLICES];    		
     	for (DWORD i = 0; i < BUFFER_SLICES; ++i)
    	{      	
-	   RIO_BUF *pBuffer = m_pBufs + i;
+	   RIO_BUF *pBuffer = m_pBufsBlit + i;
       	
-           pBuffer->BufferId = m_sendRioBufferStreamId;
+           pBuffer->BufferId = m_sendRioBufferBlitId;
       	   pBuffer->Offset = offset;
            pBuffer->Length = BUFFER_MTU;
 
 	   offset += BUFFER_MTU;
-   	}
+   	}   
+   	
+        m_sendRioBufferAudioId = m_rio.RIORegisterBuffer(pBufferAudio, BUFFER_SIZE);
+        if (m_sendRioBufferAudioId == RIO_INVALID_BUFFERID)
+    	{
+        	LOG(0,"[MiSTer] RIORegisterBuffer pBufferAudio Error: %lu\n", ::GetLastError());        		
+    	}  
+        offset = 0;			    											    	    		    		    		 	    		    	
+    	m_pBufsAudio = new RIO_BUF[BUFFER_SLICES];    		
+    	for (DWORD i = 0; i < BUFFER_SLICES; ++i)
+   	{      	
+	   RIO_BUF *pBuffer = m_pBufsAudio + i;
+      	
+           pBuffer->BufferId = m_sendRioBufferAudioId;
+      	   pBuffer->Offset = offset;
+           pBuffer->Length = BUFFER_MTU;
+
+	   offset += BUFFER_MTU;
+   	}   			
    	
    	LOG(0,"[MiSTer] Create queues %s...\n","");		
 	m_sendQueue = m_rio.RIOCreateCompletionQueue(BUFFER_SLICES, &completionType);
@@ -265,8 +288,7 @@ else
 	}   						  	   
 }
 
-#else	
-               
+#else	               
   	printf("[DEBUG] Initialising socket...\n");  
   	m_sockFD = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);				
   	if (sockfd < 0)
@@ -376,9 +398,9 @@ void GroovyMister::CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
 	uint32_t bytesToSend = 0;	
 	switch (m_lz4Frames) 
 	{
-		case(1): cSize = LZ4_compress_default((char *)&pBufferStream[0], m_pBufferLZ4, m_RGBSize, m_RGBSize); 
+		case(1): cSize = LZ4_compress_default((char *)&pBufferBlit[0], m_pBufferLZ4, m_RGBSize, m_RGBSize); 
 		         break;
-		case(2): cSize = LZ4_compress_HC((char *)&pBufferStream[0], m_pBufferLZ4, m_RGBSize, m_RGBSize, LZ4HC_CLEVEL_DEFAULT); 
+		case(2): cSize = LZ4_compress_HC((char *)&pBufferBlit[0], m_pBufferLZ4, m_RGBSize, m_RGBSize, LZ4HC_CLEVEL_DEFAULT); 
 			 break;
 	}        
    	 
@@ -398,7 +420,7 @@ void GroovyMister::CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
    	}
 	
 	setTimeStart();	
-        SendStream(bytesToSend, cSize);   
+        SendStream(0, bytesToSend, cSize);   
         setTimeEnd();
         m_streamTime = DiffTime();
         //printf("[DEBUG] Stream time %lu\n",m_streamTime);
@@ -422,7 +444,7 @@ void GroovyMister::CmdAudio(uint16_t soundSize)
    	memcpy(&m_bufferSend[1], &soundSize, sizeof(soundSize));                               	   	    
    	Send(&m_bufferSend[0], 3);      	             	
    	
-   	SendStream(soundSize, 0); 	              	
+   	SendStream(1, soundSize, 0); 	              	
 }
 
 uint32_t GroovyMister::getACK(DWORD dwMilliseconds)
@@ -602,7 +624,7 @@ if (USE_RIO)
   	sendto(m_sockFD, (char *) cmd, cmdSize, 0, (struct sockaddr *)&m_serverAddr, sizeof(m_serverAddr));	   
 }
 
-void GroovyMister::SendStream(uint32_t bytesToSend, uint32_t cSize)
+void GroovyMister::SendStream(uint8_t whichBuffer, uint32_t bytesToSend, uint32_t cSize)
 {	
 	DWORD flags = RIO_MSG_DONT_NOTIFY | RIO_MSG_DEFER;
 	uint32_t bytesSended = 0;	
@@ -611,9 +633,17 @@ if (USE_RIO)
 {	             
         int i=0;
 	while (bytesSended < bytesToSend)
-	{				
-		m_pBufs[i].Length = (bytesToSend - bytesSended >= BUFFER_MTU) ? BUFFER_MTU : bytesToSend - bytesSended;  	  	
-  		m_rio.RIOSend(m_requestQueue, &m_pBufs[i], 1, flags, &m_pBufs[i]);
+	{			
+		if (whichBuffer == 0)
+		{
+			m_pBufsBlit[i].Length = (bytesToSend - bytesSended >= BUFFER_MTU) ? BUFFER_MTU : bytesToSend - bytesSended;  	  	
+  			m_rio.RIOSend(m_requestQueue, &m_pBufsBlit[i], 1, flags, &m_pBufsBlit[i]);					
+  		}
+  		else
+  		{
+  			m_pBufsAudio[i].Length = (bytesToSend - bytesSended >= BUFFER_MTU) ? BUFFER_MTU : bytesToSend - bytesSended;  	  	
+  			m_rio.RIOSend(m_requestQueue, &m_pBufsAudio[i], 1, flags, &m_pBufsAudio[i]);					
+  		}	
   		bytesSended += BUFFER_MTU;   	
   		i++;
 	}
@@ -624,13 +654,20 @@ if (USE_RIO)
 	while (bytesSended < bytesToSend)
 	{				
 		uint32_t chunkSize = (bytesToSend - bytesSended >= BUFFER_MTU) ? BUFFER_MTU : bytesToSend - bytesSended;  
-		if (cSize > 0)
+		if (whichBuffer == 0)
 		{
-			Send(&m_pBufferLZ4[bytesSended], chunkSize); 
-		}	  
-		else
-		{	  		
-  			Send(&pBufferStream[bytesSended], chunkSize); 
+			if (cSize > 0)
+			{
+				Send(&m_pBufferLZ4[bytesSended], chunkSize); 
+			}	  
+			else
+			{	  		
+  				Send(&pBufferBlit[bytesSended], chunkSize); 
+  			}	
+  		}
+  		else
+  		{
+  			Send(&pBufferAudio[bytesSended], chunkSize);
   		}	
   		bytesSended += BUFFER_MTU;   	  		
 	}

@@ -39,7 +39,8 @@ class GroovyMister
 {
  public:
 	
- 	char *pBufferStream; 	// This buffer are registered and aligned for sending data (rgb or audio). Populate it before CmdBlit or CmdAudio 	 	
+ 	char *pBufferBlit; 	// This buffer are registered and aligned for sending rgb. Populate it before CmdBlit  	 	
+ 	char *pBufferAudio; 	// This buffer are registered and aligned for sending audio. Populate it before CmdAudio  	 	
  	fpgaStatus fpga;	// Data with last received ACK
  	
 	GroovyMister();
@@ -77,9 +78,12 @@ class GroovyMister
 	RIO_BUF m_sendRioBuffer; 
 	RIO_BUFFERID m_receiveRioBufferId;
 	RIO_BUF m_receiveRioBuffer; 
-	RIO_BUFFERID m_sendRioBufferStreamId;		
-	RIO_BUF m_sendRioBufferStream; 
-	RIO_BUF *m_pBufs;
+	RIO_BUFFERID m_sendRioBufferBlitId;		
+	RIO_BUF m_sendRioBufferBlit; 
+	RIO_BUF *m_pBufsBlit;
+	RIO_BUFFERID m_sendRioBufferAudioId;		
+	RIO_BUF m_sendRioBufferAudio; 
+	RIO_BUF *m_pBufsAudio;
 	
 	LARGE_INTEGER m_tickStart;
         LARGE_INTEGER m_tickEnd;
@@ -95,6 +99,7 @@ class GroovyMister
         char m_bufferSend[26]; 
         char m_bufferReceive[13]; 
         char *m_pBufferLZ4;
+        char *m_pBufferAudio;
         uint8_t m_lz4Frames;
         uint8_t m_soundChan;
         uint32_t m_RGBSize;
@@ -108,7 +113,7 @@ class GroovyMister
                                   
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);
 	void Send(void *cmd, int cmdSize);
-	void SendStream(uint32_t bytesToSend, uint32_t cSize);
+	void SendStream(uint8_t whichBuffer, uint32_t bytesToSend, uint32_t cSize);
 	void setTimeStart(void);
 	void setTimeEnd(void);
 	uint32_t DiffTime(void);
