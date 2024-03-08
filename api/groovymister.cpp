@@ -21,7 +21,7 @@
 #include "../lz4/lz4.h"
 #include "../lz4/lz4hc.h"
 
-#define USE_RIO 0
+#define USE_RIO 1
 
 #define LOG(sev,fmt, ...) do {\
 			        if (sev <= m_verbose) {\
@@ -337,7 +337,7 @@ if (USE_RIO)
 }        
 #endif        
 
-        uint32_t ackTime = getACK(30);
+        uint32_t ackTime = getACK(16);
         if (!ackTime)
         {
         	LOG(0,"[MiSTer] ACK failed with %d ms\n",16); 
