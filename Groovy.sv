@@ -964,8 +964,8 @@ always @(posedge clk_sys) begin
          begin                        
            reset_audio    <= 1'b0; 
            vram_reset     <= 1'b0;             
-           if (ddr_busy) ddr_data_req <= 1'b0;                   
-           if (!ddr_busy && sound_write_ready) begin               		 
+           if (ddr_busy) ddr_data_req <= 1'b0;                                          		 
+           if (!ddr_busy) begin               		 
              ddr_burst    <= PoC_audio_ddr_bytes - PoC_audio_count_bytes > 24'd1023 ? 8'd128 : ((PoC_audio_ddr_bytes - PoC_audio_count_bytes) >> 3) + 1'b1;
              ddr_addr     <= DDR_AB_OFFSET + PoC_audio_count_bytes;                                                                                         
              ddr_data_req <= 1'b1;                                              
@@ -1163,8 +1163,9 @@ always @(posedge clk_sys) begin
              ddr_data_to_write     <= lz4_uncompressed_long;                                       
            //end update
            //put pixels on vram
-             if (PoC_frame_lz4_ddr == PoC_frame_ddr && vram_synced) begin                                                             
-               if ((vram_end_frame || vga_pixels - 2 > vram_pixels) && PoC_frame_rgb_offset != 0) begin
+             if (PoC_frame_lz4_ddr == PoC_frame_ddr && vram_synced && PoC_subframe_px_vram < vga_pixels) begin                                                             
+               //if ((PoC_subframe_px_vram || vga_pixels - 2 > vram_pixels) && PoC_frame_rgb_offset != 0) begin
+               if (vga_pixels - PoC_subframe_px_vram > 2 && PoC_frame_rgb_offset != 0) begin
                  vram_wren1              <= vram_synced;
                  vram_wren2              <= vram_synced;
                  vram_wren3              <= vram_synced;                                     
@@ -1173,7 +1174,8 @@ always @(posedge clk_sys) begin
                  PoC_subframe_ddr_bytes  <= PoC_subframe_ddr_bytes + 8'd9;
                  PoC_subframe_vram_bytes <= PoC_subframe_vram_bytes + 8'd9;
                end else 
-               if (vram_end_frame || vga_pixels - 1 > vram_pixels) begin
+              // if (vram_end_frame || vga_pixels - 1 > vram_pixels) begin
+               if (vga_pixels - PoC_subframe_px_vram > 1) begin
                  vram_wren1            <= vram_synced;
                  vram_wren2              <= vram_synced;                                        
                  PoC_subframe_px_ddr     <= PoC_subframe_px_ddr + 24'd2;
@@ -1181,7 +1183,8 @@ always @(posedge clk_sys) begin
                  PoC_subframe_ddr_bytes  <= PoC_subframe_ddr_bytes + 8'd6;
                  PoC_subframe_vram_bytes <= PoC_subframe_vram_bytes + 8'd6;                         
                end else 
-               if (vram_end_frame || vga_pixels > vram_pixels) begin
+               if (vga_pixels - PoC_subframe_px_vram > 0) begin
+             //  if (vram_end_frame || vga_pixels > vram_pixels) begin
                  vram_wren1              <= vram_synced;                       
                  PoC_subframe_px_ddr     <= PoC_subframe_px_ddr + 24'd1;
                  PoC_subframe_px_vram    <= PoC_subframe_px_vram + 24'd1;   

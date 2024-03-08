@@ -196,8 +196,8 @@ always@(posedge clk_sys) begin
                                            end  
                                            2:
                                            begin
-                                             sound_rate  <= io_din[9:8];
-                                             sound_chan  <= io_din[1:0];                                                    
+                                             sound_rate  <= io_din[1:0];
+                                             sound_chan  <= io_din[3:2];                                                                                                                                              
                                            end                                                                                                                  
                                          endcase 
                                                 

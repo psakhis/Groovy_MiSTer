@@ -457,7 +457,11 @@ static void groovy_FPGA_init(uint8_t cmd, uint8_t audio_rate, uint8_t audio_chan
 		if (req) spi_w(cmd);
 		if (req && cmd)
 		{
-			spi_w(((uint16_t)audio_rate << 8) | audio_chan);			
+			bitByte bits; 
+			bits.byte = audio_rate;
+			bits.u.bit2 = (audio_chan == 1) ? 1 : 0;
+			bits.u.bit3 = (audio_chan == 2) ? 1 : 0;
+			spi_w((uint16_t) bits.byte);			
 		}
 	}
 	DisableIO();
