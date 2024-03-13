@@ -318,19 +318,23 @@ hps_ext hps_ext
         .reset_blit_lz4(reset_blit_lz4),
         .cmd_blit_lz4(cmd_blit_lz4),
         .lz4_size(lz4_size),
-        .lz4_AB(lz4_AB)
-/* DEBUG
-        .PoC_frame_lz4(PoC_frame_lz4),	  
-        .PoC_subframe_lz4_bytes(PoC_subframe_lz4_bytes),	  
-        .PoC_subframe_blit_lz4(PoC_subframe_blit_lz4),	  
-        .lz4_uncompressed_bytes(lz4_uncompressed_bytes),
+        .lz4_AB(lz4_AB),
+        .lz4_uncompressed_bytes(lz4_uncompressed_bytes)
+/* debug
+        .PoC_subframe_wr_bytes(PoC_subframe_wr_bytes),     
+        .lz4_run(lz4_run),
+        .PoC_lz4_resume(PoC_lz4_resume),
+        .PoC_test1(PoC_test1),
+        .PoC_test2(PoC_test2),
+        .cmd_fskip(cmd_fskip),
+        .lz4_stop(lz4_stop),
+        .PoC_lz4_AB(PoC_lz4_AB),
+        .lz4_compressed_bytes(lz4_compressed_bytes),
         .lz4_gravats(lz4_gravats),     
         .lz4_llegits(lz4_llegits),
-        .lz4_state(lz4_state),
-        .lz4_done(lz4_done_bis),
-        .lz4_paused(lz4_paused_bis),
-        .lz4_run(lz4_run),
-        .lz4_burst(lz4_burst) */        
+        .PoC_subframe_lz4_bytes(PoC_subframe_lz4_bytes),
+        .PoC_subframe_blit_lz4(PoC_subframe_blit_lz4)
+*/      
 );
 
 /////////////////////////////////////////////////////////
@@ -465,6 +469,7 @@ reg[1:0]     ddr_data_idx = 2'd0;
 
 reg  [63:0]  ddr_data_to_write={8'h00,8'h00,8'h00,8'h00,8'h00,8'h73,8'h65,8'h72};
 
+
 ddram ddram
 (
         .*,   
@@ -475,7 +480,8 @@ ddram ddram
         .mem_burst(ddr_burst),             
         .mem_wr(ddr_data_write),                  
         .mem_busy(ddr_busy),
-        .mem_dready(ddr_data_ready)             
+        .mem_dready(ddr_data_ready)                
+      
 );
 
 ///////////////////////////////////////////////////////////////////////////
@@ -582,8 +588,14 @@ reg [23:0] PoC_subframe_lz4_ddr_bytes = 24'd0;
 reg [15:0] PoC_subframe_blit_lz4_ddr = 16'd0;
 reg [27:0] PoC_subframe_wr_bytes = 28'd0;
 
-reg [23:0] PoC_frame_field_lz4 = 24'd0;
-
+//reg [23:0] PoC_frame_field_lz4 = 24'd0;
+reg        PoC_frame_field_lz4 = 1'b0;
+reg        PoC_frame_lz4_FB = 1'b0;
+reg        PoC_lz4_resume = 1'b0;
+reg [23:0] PoC_subframe_px_lz4 = 24'd0;
+reg [1:0]  PoC_frame_rgb_offset_lz4 = 1'b0;
+/*reg  PoC_test1 = 1'b0;
+reg  PoC_test2 = 1'b0;*/
 
 // Main flow
 always @(posedge clk_sys) begin                                                                                                                                                                                                                                                                 
@@ -595,7 +607,7 @@ always @(posedge clk_sys) begin
   end 
 	  
   // verify if vram has pixels needed for next line to activate non volatile framebuffer (cmd_fskip)
-	 if (PoC_frame_vram != 0) begin
+	 if ((hps_frameskip || cmd_logo) && PoC_frame_vram != 0) begin
 	   if (vga_vcount <= PoC_interlaced && vram_queue == 24'd0) begin // raster at the end of frame and vram is empty
 	     cmd_fskip             <= 1'b1;
 		    PoC_px_frameskip      <= PoC_H;
@@ -630,7 +642,9 @@ always @(posedge clk_sys) begin
            vram_active                <= 1'b0;                                                                                                                                             
            vram_wren1                 <= 1'b0;                         
            vram_wren2                 <= 1'b0;                         
-           vram_wren3                 <= 1'b0; 
+           vram_wren3                 <= 1'b0;
+           vram_drive_raw             <= 1'b0; 
+           vram_drive_lz4             <= 1'b0; 
                         
            ddr_data_write             <= 1'b0;                                                                                                 
            ddr_data_req               <= 1'b0;                                         
@@ -652,16 +666,22 @@ always @(posedge clk_sys) begin
            PoC_subframe_px_ddr        <= 24'd0;
            PoC_subframe_ddr_bytes     <= 28'd0;                                                 	
            PoC_subframe_bl_ddr        <= 16'd0;	
-           
+           PoC_frame_rgb_offset       <= 2'd0;
+
            lz4_run                    <= 1'b0;
            lz4_reset                  <= 1'b0;
            PoC_frame_lz4              <= 24'd0;
            PoC_subframe_lz4_bytes     <= 24'd0;
            PoC_subframe_blit_lz4      <= 16'd0;
-           PoC_frame_lz4_ddr	      <= 24'd0;
+           PoC_frame_lz4_ddr	         <= 24'd0;
            PoC_subframe_lz4_ddr_bytes <= 24'd0;       
            PoC_subframe_blit_lz4_ddr  <= 16'd0;
            PoC_subframe_wr_bytes      <= 28'd0;
+           PoC_frame_field_lz4        <= 1'b0;
+           PoC_frame_lz4_FB           <= 1'b0;
+           PoC_lz4_resume             <= 1'b0;
+           PoC_subframe_px_lz4        <= 24'd0;
+           PoC_frame_rgb_offset_lz4   <= 2'd0;
            
            if (cmd_init) state        <= S_Dispatcher;                             
          end         
@@ -695,7 +715,7 @@ always @(posedge clk_sys) begin
                ddr_data_idx          <= 2'd0;                             
                state                 <= S_Switchres_Header;                                                               
              end else  
-             if (cmd_fskip && (hps_frameskip || cmd_logo)) begin  // use framebuffer avoiding black screeen (auto blit)                                                                               
+             if (cmd_fskip) begin    // use framebuffer avoiding black screeen (auto blit)                                                                               
                state                 <= PoC_state_frameskip;                                                               
              end else                     			  
              if (cmd_audio) begin     // audio blit samples requested from hps 
@@ -712,7 +732,7 @@ always @(posedge clk_sys) begin
                ddr_data_req       <= 1'b1;                                                                                            
                state              <= S_Blit_Header_Raw;                                                                           
              end else                                     
-             if ((cmd_blit_lz4 || auto_blit_lz4) && !cmd_switchres && !vga_frameskip) begin // lz4 blit                                                      
+             if ((cmd_blit_lz4 || auto_blit_lz4) && !cmd_switchres) begin // lz4 blit                                                      
                reset_blit_lz4     <= cmd_blit_lz4 ? 1'b1 : 1'b0;              
                ddr_burst          <= 8'd1;                                     
                ddr_data_req       <= 1'b1;              
@@ -726,26 +746,28 @@ always @(posedge clk_sys) begin
          begin   
            if (ddr_busy) ddr_data_req <= 1'b0;                                                       
            reset_blit <= 1'b0;	
-           auto_blit  <= 1'b0;             
+           auto_blit  <= PoC_frame_vram >= ddr_data[23:0] ? 1'b0 : 1'b1;	            
            vram_reset <= !vram_synced;          
            if (ddr_data_ready) begin    
              ddr_data_req <= 1'b0;                                                                                                                 
              state        <= S_Blit_Raw;                                                                                                                                                                                                                                                                         
-             if (ddr_data[23:0] < vga_frame || (ddr_data[23:0] == vga_frame && vblank_core) || ddr_data[23:0] < PoC_frame_ddr || ddr_data[23:0] < PoC_frame_vram || (!vram_synced && ddr_data[23:0] <= vga_frame) || (vram_pixels == 0 && ddr_data[23:0] <= vga_frame)) begin //frame arrives later (discard contaminate vram -> latency)
+             if (ddr_data[23:0] < vga_frame || ddr_data[23:0] < PoC_frame_ddr || ddr_data[23:0] < PoC_frame_vram || ((vblank_core || !vram_pixels || !vram_synced) && ddr_data[23:0] <= vga_frame)) begin //frame arrives later (discard contaminate vram -> latency)
                PoC_subframe_px_vram    <= 24'd0;                                                                      
                PoC_subframe_bl_vram    <= 16'd0;
                PoC_subframe_px_ddr     <= 24'd0;
                PoC_subframe_bl_ddr     <= 16'd0; 
                PoC_subframe_vram_bytes <= 28'd0;                                                                                                                 
                PoC_subframe_ddr_bytes  <= 28'd0;
-               PoC_frame_rgb_offset    <= 2'd0;              
+               PoC_frame_rgb_offset    <= 2'd0;  
+               if (ddr_data[23:0] > PoC_frame_vram) begin
+                 PoC_frame_vram        <= ddr_data[23:0];  
+                 PoC_frame_ddr         <= ddr_data[23:0];
+               end 
              end else begin                                         
-               if (ddr_data[23:0] > PoC_frame_ddr && PoC_frame_vram != 0 && PoC_subframe_px_vram != 0 && PoC_frame_vram < PoC_frame_ddr && vram_synced) begin  // frame arrives soon, finish blit last asap                                     
-                 auto_blit           <= 1'b1;
+               if (ddr_data[23:0] > PoC_frame_ddr && PoC_frame_vram != 0 && PoC_subframe_px_vram != 0 && PoC_frame_vram < PoC_frame_ddr && vram_synced) begin  // frame arrives soon, finish blit last asap                                                      
                  PoC_subframe_px_ddr <= vga_pixels;
                  PoC_subframe_bl_ddr <= PoC_subframe_bl_vram + 1'd1;                             
-               end else begin                                                  
-                 auto_blit           <= PoC_frame_vram == ddr_data[23:0] ? 1'b0 : 1'b1;
+               end else begin                                                                   
                  PoC_frame_ddr       <= ddr_data[23:0];
                  PoC_subframe_px_ddr <= ddr_data[47:24];    
                  PoC_subframe_bl_ddr <= ddr_data[63:48];                     	  
@@ -760,9 +782,9 @@ always @(posedge clk_sys) begin
            vram_reset <= 1'b0;                                 
            if (PoC_frame_ddr > PoC_frame_vram && PoC_subframe_px_ddr > PoC_subframe_px_vram && PoC_subframe_bl_ddr > PoC_subframe_bl_vram) begin 
              if (PoC_subframe_px_vram == 0) begin
-               PoC_subframe_vram_bytes <= 24'd0;
-               PoC_frame_rgb_offset    <= 2'd0;  
+               PoC_subframe_vram_bytes <= 24'd0;               
                vga_frameskip_prev      <= 1'b0;
+               PoC_frame_rgb_offset    <= 2'd0;
              end                 
              PoC_subframe_bl_vram      <= PoC_subframe_bl_ddr;
              PoC_subframe_ddr_bytes    <= (PoC_subframe_px_ddr << 1) + PoC_subframe_px_ddr;             
@@ -773,8 +795,8 @@ always @(posedge clk_sys) begin
         S_Blit_Prepare_Raw: // Prepare fetch ddr when vram it's ready to get max burst
          begin                                
            ddr_data_req <= 1'b0; 
-           vram_reset   <= 1'b0;          
-           if (vram_queue == 0 && !vblank_core)	vga_wait_vblank <= 1'b1;           
+           vram_reset   <= 1'b0;                    
+           if (!vram_drive_lz4 && vram_queue == 0 && !vblank_core)	vga_wait_vblank <= 1'b1;           
            if (PoC_subframe_vram_bytes < PoC_subframe_ddr_bytes && (vga_pixels == PoC_subframe_px_ddr || ((PoC_subframe_ddr_bytes - PoC_subframe_vram_bytes) >> 3) > 0)) begin   
              if (!ddr_busy && vram_req_ready) begin               		 
                ddr_burst    <= PoC_subframe_ddr_bytes - PoC_subframe_vram_bytes > 24'd1023 ? 8'd128 : vga_pixels == PoC_subframe_px_ddr ? ((PoC_subframe_ddr_bytes - PoC_subframe_vram_bytes) >> 3) + 1'b1 : (PoC_subframe_ddr_bytes - PoC_subframe_vram_bytes) >> 3;                 
@@ -791,51 +813,54 @@ always @(posedge clk_sys) begin
            vram_wren1                 <= 1'b0;  
            vram_wren2                 <= 1'b0;  
            vram_wren3                 <= 1'b0;     
-           vga_wait_vblank            <= vram_queue == 0 && !vblank_core ? 1'b1 : 1'b0;                  
+           vga_wait_vblank            <= !vram_drive_lz4 && vram_queue == 0 && !vblank_core ? 1'b1 : 1'b0;                  
            vga_soft_reset             <= 1'b0;            
-           if (ddr_data_ready) begin
+           if (ddr_data_ready) begin             
              ddr_data_req             <= 1'b0;                        
              if (!ddr_busy) state     <= S_Blit_End_Raw; // end burst
              PoC_subframe_vram_bytes  <= PoC_subframe_vram_bytes + 8'd8;
-             // how many pixels can write                       
-             if (PoC_subframe_px_ddr - PoC_subframe_px_vram > 2 && PoC_frame_rgb_offset != 0) begin
-               vram_wren1           <= vram_synced;
-               vram_wren2           <= vram_synced;
-               vram_wren3           <= vram_synced;                           
-               PoC_subframe_px_vram <= PoC_subframe_px_vram + 24'd3;               
-             end else 
-             if (PoC_subframe_px_ddr - PoC_subframe_px_vram > 1) begin
-               vram_wren1           <= vram_synced;
-               vram_wren2           <= vram_synced;                             
-               PoC_subframe_px_vram <= PoC_subframe_px_vram + 24'd2;                         
-             end else 
-             if (PoC_subframe_px_ddr - PoC_subframe_px_vram > 0) begin
-               vram_wren1           <= vram_synced;              
-               PoC_subframe_px_vram <= PoC_subframe_px_vram + 24'd1;                            
-             end                         
-             // calculate ddr pixels : offsets 64 + 64 + 64 = 48 + 72 + 64
-             PoC_frame_rgb_offset   <= PoC_frame_rgb_offset == 2 ? 2'd0 : PoC_frame_rgb_offset + 1'b1;
-             case (PoC_frame_rgb_offset)
-              2'd0: 
-              begin
-                {r_vram_in1, g_vram_in1, b_vram_in1} <= ddr_data[00 +:24];
-                {r_vram_in2, g_vram_in2, b_vram_in2} <= ddr_data[24 +:24];  
-                ddr_data_tmp[00 +: 16]               <= ddr_data[48 +:16];                  
-              end
-              2'd1: 
-              begin
-                {r_vram_in1, g_vram_in1, b_vram_in1} <= {ddr_data[00 +:08], ddr_data_tmp[00 +: 16]};
-                {r_vram_in2, g_vram_in2, b_vram_in2} <= ddr_data[08 +:24];  
-                {r_vram_in3, g_vram_in3, b_vram_in3} <= ddr_data[32 +:24];  
-                ddr_data_tmp[00 +: 08]               <= ddr_data[56 +:08];                                            
-              end
-              2'd2: 
-              begin
-                {r_vram_in1, g_vram_in1, b_vram_in1} <= {ddr_data[00 +:16], ddr_data_tmp[00 +: 08]};
-                {r_vram_in2, g_vram_in2, b_vram_in2} <= ddr_data[16 +:24];  
-                {r_vram_in3, g_vram_in3, b_vram_in3} <= ddr_data[40 +:24];                                                                              
-              end   
-             endcase                                                             
+             if (!vram_drive_lz4 && vram_synced) begin
+               vram_drive_raw         <= 1'b1;
+               // how many pixels can write                       
+               if (PoC_subframe_px_ddr - PoC_subframe_px_vram > 2 && PoC_frame_rgb_offset != 0) begin
+                 vram_wren1           <= 1'b1;
+                 vram_wren2           <= 1'b1;
+                 vram_wren3           <= 1'b1;                           
+                 PoC_subframe_px_vram <= PoC_subframe_px_vram + 24'd3;               
+               end else 
+               if (PoC_subframe_px_ddr - PoC_subframe_px_vram > 1) begin
+                 vram_wren1           <= 1'b1;
+                 vram_wren2           <= 1'b1;                             
+                 PoC_subframe_px_vram <= PoC_subframe_px_vram + 24'd2;                         
+               end else 
+               if (PoC_subframe_px_ddr - PoC_subframe_px_vram > 0) begin
+                 vram_wren1           <= 1'b1;              
+                 PoC_subframe_px_vram <= PoC_subframe_px_vram + 24'd1;                            
+               end                         
+               // calculate ddr pixels : offsets 64 + 64 + 64 = 48 + 72 + 64
+               PoC_frame_rgb_offset   <= PoC_frame_rgb_offset == 2 ? 2'd0 : PoC_frame_rgb_offset + 1'b1;
+               case (PoC_frame_rgb_offset)
+                2'd0: 
+                begin
+                  {r_vram_in1, g_vram_in1, b_vram_in1} <= ddr_data[00 +:24];
+                  {r_vram_in2, g_vram_in2, b_vram_in2} <= ddr_data[24 +:24];  
+                  ddr_data_tmp[00 +: 16]               <= ddr_data[48 +:16];                  
+                end
+                2'd1: 
+                begin
+                  {r_vram_in1, g_vram_in1, b_vram_in1} <= {ddr_data[00 +:08], ddr_data_tmp[00 +: 16]};
+                  {r_vram_in2, g_vram_in2, b_vram_in2} <= ddr_data[08 +:24];  
+                  {r_vram_in3, g_vram_in3, b_vram_in3} <= ddr_data[32 +:24];  
+                  ddr_data_tmp[00 +: 08]               <= ddr_data[56 +:08];                                            
+                end
+                2'd2: 
+                begin
+                  {r_vram_in1, g_vram_in1, b_vram_in1} <= {ddr_data[00 +:16], ddr_data_tmp[00 +: 08]};
+                  {r_vram_in2, g_vram_in2, b_vram_in2} <= ddr_data[16 +:24];  
+                  {r_vram_in3, g_vram_in3, b_vram_in3} <= ddr_data[40 +:24];                                                                              
+                end   
+               endcase                                                             
+             end
            end           
          end 
          
@@ -845,15 +870,17 @@ always @(posedge clk_sys) begin
            vram_wren2                <= 1'b0;  
            vram_wren3                <= 1'b0;                                     
            if (PoC_subframe_px_vram >= vga_pixels) begin // all pixels saved on vram			              
-             PoC_frame_vram          <= PoC_frame_ddr;
+             PoC_frame_vram          <= PoC_frame_ddr;             
              PoC_subframe_bl_vram    <= 16'd0;
              PoC_subframe_px_vram    <= 24'd0; 
              PoC_subframe_px_ddr     <= 24'd0;      
              PoC_subframe_bl_ddr     <= 16'd0;
              PoC_subframe_vram_bytes <= 28'd0;
              PoC_subframe_ddr_bytes  <= 28'd0;
-             PoC_frame_rgb_offset    <= 2'd0;
+             PoC_frame_rgb_offset    <= 2'd0;         
              PoC_frame_field	        <= PoC_interlaced ? !PoC_frame_field : 1'b0;	// framebuffer flip/flop 				 
+             vram_drive_raw          <= 1'b0;
+             vram_reset              <= !vram_end_frame;
              state                   <= S_Dispatcher; 
            end else state            <= S_Blit_Prepare_Raw;            
          end
@@ -863,11 +890,12 @@ always @(posedge clk_sys) begin
            vga_frameskip           <= 1'b1;
            PoC_frame_ddr           <= vga_frame;			  	         	           		  	         	  
            PoC_subframe_px_ddr     <= PoC_H + 24'd3;                
+           PoC_subframe_px_vram    <= 24'd0;
            PoC_subframe_bl_ddr     <= 16'd1;                      
            PoC_subframe_bl_vram    <= 16'd1;                   
            PoC_subframe_ddr_bytes  <= (PoC_H << 1) + PoC_H + 24'd9;         
-           PoC_subframe_vram_bytes <= 28'd0;
-           PoC_frame_rgb_offset    <= 2'd0;                   
+           PoC_subframe_vram_bytes <= 28'd0;  
+           PoC_frame_rgb_offset    <= 2'd0;                          
            vram_reset              <= 1'b1;          
            auto_blit               <= 1'b0;          		            
            state                   <= S_Blit_Prepare_Raw;                                                                               
@@ -937,7 +965,9 @@ always @(posedge clk_sys) begin
                  
              vram_reset      <= 1'b1;                                                                                                       
                          
-             PoC_frame_field_lz4  <= vga_frameskip || vga_frameskip_prev ? PoC_frame_ddr : PoC_frame_ddr + 1'b1;            
+         //    PoC_frame_field_lz4  <= vga_frameskip || vga_frameskip_prev ? PoC_frame_ddr : PoC_frame_ddr + 1'b1;            
+         //    PoC_frame_field_lz4  <= (vga_frameskip || vga_frameskip_prev) && ddr_data_tmp[152 +:08] ? 1'b1 : 1'b0;
+             PoC_frame_field_lz4  <= (vga_frameskip || vga_frameskip_prev) && ddr_data_tmp[152 +:08] ? 1'b1 : 1'b0;
              PoC_frame_field	     <= (vga_frameskip || vga_frameskip_prev) && ddr_data_tmp[152 +:08] ? 1'b1 : 1'b0;	//if fskip put pixels on last frame, flag is inverted for interlaced             
              PoC_subframe_px_vram <= 24'd0;   
              PoC_subframe_bl_vram <= 16'd0;   
@@ -1044,71 +1074,95 @@ always @(posedge clk_sys) begin
              state                 <= S_Dispatcher; 
            end else state          <= S_Audio_Prepare;            
          end
-
+/*
        S_Blit_Header_Lz4:  // header lz4 ready
          begin   
            if (ddr_busy) ddr_data_req <= 1'b0;                                                             
-           reset_blit_lz4             <= 1'b0;			                        
-           auto_blit_lz4              <= 1'b0;                                
-           vram_reset                 <= !vram_synced;                    
+           reset_blit_lz4             <= 1'b0;               
+           auto_blit_lz4              <= PoC_frame_lz4 >= ddr_data[23:0] ? 1'b0 : 1'b1;			                                                                 
+           vram_reset                 <= !vram_synced;
+           PoC_frame_lz4_FB           <= 1'b0;                    
            if (ddr_data_ready) begin  
-             ddr_data_req             <= 1'b0;   
-             state                    <= S_Blit_Lz4;    
-             if (ddr_data[23:0] < vga_frame || (ddr_data[23:0] == vga_frame && vblank_core) || ddr_data[23:0] < PoC_frame_ddr || ddr_data[23:0] < PoC_frame_vram || (!vram_synced && ddr_data[23:0] <= vga_frame) || (vram_pixels == 0 && ddr_data[23:0] <= vga_frame)) begin //frame arrives later (discard contaminate vram -> latency)                                                         
-               PoC_frame_lz4              <= ddr_data[23:0];
-               PoC_frame_lz4_ddr          <= 24'd0;
-               PoC_subframe_lz4_ddr_bytes <= 24'd0;
-               PoC_subframe_blit_lz4_ddr  <= 16'd0; 
-               PoC_subframe_lz4_bytes     <= 24'd0;
-               PoC_subframe_blit_lz4      <= 16'd0;  
-               PoC_subframe_wr_bytes      <= 28'd0;                                                                          
+             ddr_data_req             <= 1'b0;     
+             state                    <= cmd_fskip || vram_drive_raw ? S_Dispatcher : S_Blit_Lz4;                 
+             if (PoC_lz4_resume || ddr_data[23:0] < vga_frame || (ddr_data[23:0] == vga_frame && vblank_core) || ddr_data[23:0] < PoC_frame_ddr || ddr_data[23:0] < PoC_frame_vram || ((!vram_pixels || !vram_synced || vram_drive_raw || cmd_fskip || vga_frameskip) && ddr_data[23:0] <= vga_frame)) begin //frame arrives later (only update FB)                                                                                                             
+               PoC_frame_lz4_FB       <= 1'b1;
+               if (ddr_data[23:0] > PoC_frame_lz4_ddr && PoC_subframe_lz4_bytes != 0) begin                                   
+                 PoC_subframe_lz4_ddr_bytes <= lz4_compressed_bytes; 
+                 PoC_subframe_blit_lz4_ddr  <= PoC_subframe_blit_lz4 + 1'b1;                
+               end else begin
+                 PoC_frame_lz4_ddr          <= ddr_data[23:0];
+                 PoC_subframe_lz4_ddr_bytes <= ddr_data[47:24]; 
+                 PoC_subframe_blit_lz4_ddr  <= ddr_data[63:48];
+               end
              end else                                                                                                                                                                                                                                                                                                                                                              
-             if (ddr_data[23:0] > PoC_frame_ddr && PoC_frame_vram != 0 && PoC_subframe_px_vram != 0 && PoC_frame_vram < PoC_frame_ddr && vram_synced && PoC_subframe_lz4_bytes != 0) begin                                                                                       
-               auto_blit_lz4              <= 1'b1;                                             
+             if (ddr_data[23:0] > PoC_frame_lz4_ddr && PoC_subframe_lz4_bytes != 0) begin //frame arrives soon (terminate last first)                                                                                                                                                               
                PoC_subframe_lz4_ddr_bytes <= lz4_compressed_bytes;
-               PoC_subframe_blit_lz4_ddr  <= PoC_subframe_blit_lz4 + 1'b1;                                                                                                              
-             end else begin                                                  
-               auto_blit_lz4              <= PoC_frame_lz4 == ddr_data[23:0] ? 1'b0 : 1'b1;                
+               PoC_subframe_blit_lz4_ddr  <= PoC_subframe_blit_lz4 + 1'b1;                                                                                                                                    
+             end else begin                                                                                                                 
                PoC_frame_lz4_ddr          <= ddr_data[23:0];
                PoC_subframe_lz4_ddr_bytes <= ddr_data[47:24];    
-               PoC_subframe_blit_lz4_ddr  <= ddr_data[63:48];                                                    		               
+               PoC_subframe_blit_lz4_ddr  <= ddr_data[63:48];                                                                                 
              end            
            end                                   
          end     
-
+*/
+       S_Blit_Header_Lz4:  // header lz4 ready
+         begin   
+           if (ddr_busy) ddr_data_req <= 1'b0;                                                             
+           reset_blit_lz4             <= 1'b0;               
+           auto_blit_lz4              <= PoC_frame_lz4 >= ddr_data[23:0] ? 1'b0 : 1'b1;			                                                                 
+           vram_reset                 <= !vram_synced;
+           PoC_frame_lz4_FB           <= 1'b0;                    
+           if (ddr_data_ready) begin  
+             ddr_data_req             <= 1'b0;     
+             state                    <= cmd_fskip || vram_drive_raw ? S_Dispatcher : S_Blit_Lz4; // if vram is controlled by fskip, wait vblank
+             if (ddr_data[23:0] > PoC_frame_lz4_ddr && PoC_subframe_lz4_bytes != 0) begin  // finish current frame before new one                               
+               PoC_subframe_lz4_ddr_bytes <= lz4_compressed_bytes; 
+               PoC_subframe_blit_lz4_ddr  <= PoC_subframe_blit_lz4 + 1'b1;                
+             end else begin
+               PoC_frame_lz4_ddr          <= ddr_data[23:0];
+               PoC_subframe_lz4_ddr_bytes <= ddr_data[47:24]; 
+               PoC_subframe_blit_lz4_ddr  <= ddr_data[63:48];
+             end                
+             if (PoC_lz4_resume || ddr_data[23:0] < vga_frame || ddr_data[23:0] < PoC_frame_ddr || ddr_data[23:0] < PoC_frame_vram || ((vblank_core || !vram_pixels || !vram_synced || vram_drive_raw || cmd_fskip || vga_frameskip) && ddr_data[23:0] <= vga_frame)) begin //frame arrives later                                                                                                         
+               state            <= cmd_fskip ? S_Dispatcher : S_Blit_Lz4; 
+               PoC_frame_lz4_FB <= 1'b1;  // this frame only updates framebuffer (vram should be controlled by fskip)                         
+             end   
+           end                                   
+         end  
 
          S_Blit_Lz4:  // get bytes to blit from header
          begin                                                             
-           state      <= S_Dispatcher;  
-           vram_reset <= 1'b0;                                          
-           if (PoC_frame_lz4_ddr > PoC_frame_lz4 && PoC_subframe_lz4_ddr_bytes > PoC_subframe_lz4_bytes && PoC_subframe_blit_lz4_ddr > PoC_subframe_blit_lz4) begin                               
-             if (PoC_subframe_lz4_bytes == 0) begin           
-               if (PoC_frame_lz4_ddr > PoC_frame_ddr) begin //fksip could be updated frame_ddr
-                 PoC_frame_ddr           <= PoC_frame_lz4_ddr;	            
-                 PoC_subframe_px_ddr     <= 24'd0;
-                 PoC_subframe_bl_ddr     <= 16'd0;
-                 PoC_subframe_vram_bytes <= 24'd0;
-                 PoC_subframe_px_vram    <= 24'd0;
-                 PoC_subframe_bl_vram    <= 16'd0;                 
-               end                             
-               vga_frameskip_prev        <= 1'b0;
-               PoC_frame_rgb_offset      <= 2'd0;    
-               PoC_subframe_wr_bytes     <= 28'd0;         
-               lz4_reset                 <= 1'b1;                                                    
-               lz4_compressed_bytes      <= lz4_size;               
-               PoC_lz4_AB                <= lz4_AB;
-             end                              
-             PoC_subframe_blit_lz4       <= PoC_subframe_blit_lz4_ddr;                                                  
-             state                       <= S_Blit_Prepare_Lz4;                                          													                                                                                        
+           state          <= S_Dispatcher;  
+           PoC_lz4_resume <= 1'b0;        
+           vram_reset     <= 1'b0;     
+         //  if (vram_reset) PoC_test2 <= 1'b1;                                     
+           if (PoC_frame_lz4_ddr > PoC_frame_lz4 && (PoC_lz4_resume || (PoC_subframe_lz4_ddr_bytes > PoC_subframe_lz4_bytes && PoC_subframe_blit_lz4_ddr > PoC_subframe_blit_lz4))) begin                                            
+             if (PoC_lz4_resume) begin
+               state                      <= S_Blit_Inflate_Lz4;
+             end else begin
+               if (PoC_subframe_lz4_bytes == 0) begin                                                                            
+                 PoC_subframe_px_lz4      <= 24'd0; 
+                 PoC_frame_rgb_offset_lz4 <= 2'd0;                                       
+                 vga_frameskip_prev       <= 1'b0;                                
+                 PoC_subframe_wr_bytes    <= 28'd0; 
+                 lz4_compressed_bytes     <= lz4_size;               
+                 lz4_reset                <= 1'b1;                                                                  
+                 PoC_lz4_AB               <= lz4_AB;               
+              //   PoC_test1                <= 1'b0;
+               end                                                         
+               PoC_subframe_blit_lz4      <= PoC_subframe_blit_lz4_ddr;                                                  
+               state                      <= S_Blit_Prepare_Lz4;                                          													                                                                                        
+             end
            end                          
          end    
 
          S_Blit_Prepare_Lz4: // Prepare fetch ddr when lz4 it's ready to get max burst
          begin                                
            ddr_data_req <= 1'b0; 
-           lz4_reset    <= 1'b0;  
-           vram_reset   <= 1'b0;                           
-           if (vram_queue == 0 && !vblank_core)	vga_wait_vblank <= 1'b1;
+           lz4_reset    <= 1'b0;                                      
+           if (!vram_drive_raw && !PoC_frame_lz4_FB && vram_queue == 0 && !vblank_core)	vga_wait_vblank <= 1'b1;
            if (PoC_subframe_lz4_bytes < PoC_subframe_lz4_ddr_bytes && (lz4_compressed_bytes == PoC_subframe_lz4_ddr_bytes || ((PoC_subframe_lz4_ddr_bytes - PoC_subframe_lz4_bytes) >> 3) > 0)) begin   
              if (!ddr_busy && lz4_write_ready) begin               		                        		 
                ddr_burst    <= PoC_subframe_lz4_ddr_bytes - PoC_subframe_lz4_bytes > 24'd1023 ? 8'd128 : lz4_compressed_bytes == PoC_subframe_lz4_ddr_bytes ? ((lz4_compressed_bytes - PoC_subframe_lz4_bytes) >> 3) + 8'd1 : (PoC_subframe_lz4_ddr_bytes - PoC_subframe_lz4_bytes) >> 3;                                                 
@@ -1125,7 +1179,7 @@ always @(posedge clk_sys) begin
            if (ddr_busy) ddr_data_req <= 1'b0;                                  
            lz4_write_long             <= 1'b0;                                                                                                                                                                                                        
            lz4_run                    <= 1'b0;  
-           lz4_stop                   <= 1'b1;           
+           lz4_stop                   <= 1'b1;                  
            if (ddr_data_ready) begin             
              ddr_data_req             <= 1'b0; 
              lz4_write_long           <= 1'b1; 
@@ -1138,62 +1192,51 @@ always @(posedge clk_sys) begin
  
          S_Blit_Copy_End_Lz4:
          begin    
-           lz4_write_long <= 1'b0;                                                           
-         //lz4_run        <= 1'b1;
-           lz4_stop       <= 1'b0;
-           state          <= S_Blit_Inflate_Lz4;
+           lz4_write_long <= 1'b0;                                                                  
+           lz4_stop       <= 1'b0;           
+           state          <= S_Blit_Inflate_Lz4;        
          end
-
+	    
          S_Blit_Inflate_Lz4: // uncompress bytes 
          begin           
            vram_wren1      <= 1'b0;
            vram_wren2      <= 1'b0;
            vram_wren3      <= 1'b0;  
-           ddr_data_write  <= 1'b0;   
-           vga_wait_vblank <= vram_queue == 0 && !vblank_core ? 1'b1 : 1'b0;                  
-           vga_soft_reset  <= 1'b0;     
-           lz4_run         <= !vram_synced || PoC_frame_lz4_ddr != PoC_frame_ddr ? 1'b1 : vram_req_ready;        
-           state           <= lz4_done || lz4_paused ? S_Blit_End_Lz4 : S_Blit_Inflate_Lz4;            
-           if (lz4_long_valid && lz4_uncompressed_bytes > PoC_subframe_wr_bytes) begin    
-           //update framebuffer
+           ddr_data_write  <= ddr_data_write && ddr_busy ? 1'b1 : 1'b0;   // last uncompressed isnt writed yet
+           vga_wait_vblank <= !vram_drive_raw && !PoC_frame_lz4_FB && vram_queue == 0 && !vblank_core ? 1'b1 : 1'b0;                  
+           vga_soft_reset  <= 1'b0;              
+           lz4_run         <= !lz4_paused && !lz4_done && !cmd_fskip && (vram_req_ready || PoC_frame_lz4_FB) ? 1'b1 : 1'b0;                                                                                                                                                                      
+           state           <= !ddr_data_write && !lz4_run && (lz4_paused || lz4_done || cmd_fskip) ? S_Blit_End_Lz4 : S_Blit_Inflate_Lz4;                                                                                                                                         
+           if (lz4_long_valid && lz4_uncompressed_bytes > PoC_subframe_wr_bytes && !(ddr_data_write && ddr_busy)) begin                                                            
+           //update framebuffer                           
              PoC_subframe_wr_bytes <= PoC_subframe_wr_bytes + 8'd8; 
-             ddr_addr              <= PoC_interlaced && (PoC_frame_field_lz4 + PoC_frame_lz4_ddr) % 2 == 1 ? DDR_FD_OFFSET + PoC_subframe_wr_bytes : DDR_FB_OFFSET + PoC_subframe_wr_bytes;          
+        //   ddr_addr              <= PoC_interlaced && (PoC_frame_field_lz4 + PoC_frame_lz4_ddr) % 2 == 1 ? DDR_FD_OFFSET + PoC_subframe_wr_bytes : DDR_FB_OFFSET + PoC_subframe_wr_bytes;          
+             ddr_addr              <= PoC_interlaced && PoC_frame_field_lz4 ? DDR_FD_OFFSET + PoC_subframe_wr_bytes : DDR_FB_OFFSET + PoC_subframe_wr_bytes;          
              ddr_data_write        <= 1'b1;
-             ddr_burst             <= 1'b1;
-             ddr_data_to_write     <= lz4_uncompressed_long;                                       
+             ddr_burst             <= 8'd1;           
+             ddr_data_to_write     <= lz4_uncompressed_long;                                               
            //end update
            //put pixels on vram
-             if (PoC_frame_lz4_ddr == PoC_frame_ddr && vram_synced && PoC_subframe_px_vram < vga_pixels) begin                                                             
-               //if ((PoC_subframe_px_vram || vga_pixels - 2 > vram_pixels) && PoC_frame_rgb_offset != 0) begin
-               if (vga_pixels - PoC_subframe_px_vram > 2 && PoC_frame_rgb_offset != 0) begin
-                 vram_wren1              <= vram_synced;
-                 vram_wren2              <= vram_synced;
-                 vram_wren3              <= vram_synced;                                     
-                 PoC_subframe_px_ddr     <= PoC_subframe_px_ddr + 24'd3;               
-                 PoC_subframe_px_vram    <= PoC_subframe_px_vram + 24'd3;                               
-                 PoC_subframe_ddr_bytes  <= PoC_subframe_ddr_bytes + 8'd9;
-                 PoC_subframe_vram_bytes <= PoC_subframe_vram_bytes + 8'd9;
+             if (!vram_drive_raw && !PoC_frame_lz4_FB && vram_synced && PoC_subframe_px_lz4 < vga_pixels) begin   
+               vram_drive_lz4        <= 1'b1;                                                                        
+               if (vga_pixels - PoC_subframe_px_lz4 > 2 && PoC_frame_rgb_offset_lz4 != 0) begin
+                 vram_wren1          <= 1'b1;
+                 vram_wren2          <= 1'b1;
+                 vram_wren3          <= 1'b1;                                     
+                 PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd3;                               
+               end else              
+               if (vga_pixels - PoC_subframe_px_lz4 > 1) begin
+                 vram_wren1          <= 1'b1;
+                 vram_wren2          <= 1'b1;   
+                 PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd2;                                                                       
                end else 
-              // if (vram_end_frame || vga_pixels - 1 > vram_pixels) begin
-               if (vga_pixels - PoC_subframe_px_vram > 1) begin
-                 vram_wren1            <= vram_synced;
-                 vram_wren2              <= vram_synced;                                        
-                 PoC_subframe_px_ddr     <= PoC_subframe_px_ddr + 24'd2;
-                 PoC_subframe_px_vram    <= PoC_subframe_px_vram + 24'd2;
-                 PoC_subframe_ddr_bytes  <= PoC_subframe_ddr_bytes + 8'd6;
-                 PoC_subframe_vram_bytes <= PoC_subframe_vram_bytes + 8'd6;                         
-               end else 
-               if (vga_pixels - PoC_subframe_px_vram > 0) begin
-             //  if (vram_end_frame || vga_pixels > vram_pixels) begin
-                 vram_wren1              <= vram_synced;                       
-                 PoC_subframe_px_ddr     <= PoC_subframe_px_ddr + 24'd1;
-                 PoC_subframe_px_vram    <= PoC_subframe_px_vram + 24'd1;   
-                 PoC_subframe_ddr_bytes  <= PoC_subframe_ddr_bytes + 8'd3;
-                 PoC_subframe_vram_bytes <= PoC_subframe_vram_bytes + 8'd3;                          
+               if (vga_pixels - PoC_subframe_px_lz4 > 0) begin          
+                 vram_wren1          <= 1'b1;                       
+                 PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd1;                  
                end  
                // calculate pixels : offsets 64 + 64 + 64 = 48 + 72 + 64               
-               PoC_frame_rgb_offset   <= PoC_frame_rgb_offset == 2 ? 2'd0 : PoC_frame_rgb_offset + 1'b1;
-               case (PoC_frame_rgb_offset)
+               PoC_frame_rgb_offset_lz4 <= PoC_frame_rgb_offset_lz4 == 2 ? 2'd0 : PoC_frame_rgb_offset_lz4 + 1'b1;
+               case (PoC_frame_rgb_offset_lz4)
                 2'd0: 
                 begin
                   {r_vram_in1, g_vram_in1, b_vram_in1} <= lz4_uncompressed_long[00 +:24];
@@ -1224,27 +1267,30 @@ always @(posedge clk_sys) begin
            vram_wren2     <= 1'b0;  
            vram_wren3     <= 1'b0;   
            ddr_data_write <= 1'b0; 
-           lz4_run        <= 1'b0;           
+           lz4_run        <= 1'b0;               
+           PoC_lz4_resume <= cmd_fskip && !lz4_paused ? 1'b1 : 1'b0;                        
            if (lz4_done) begin       
-             if (PoC_frame_lz4_ddr == PoC_frame_ddr) begin        
-               PoC_frame_vram           <= PoC_frame_lz4_ddr; 
-               PoC_subframe_bl_vram     <= 16'd0;
-               PoC_subframe_px_vram     <= 24'd0; 
-               PoC_subframe_px_ddr      <= 24'd0;      
-               PoC_subframe_bl_ddr      <= 16'd0;
-               PoC_subframe_vram_bytes  <= 28'd0;
-               PoC_subframe_ddr_bytes   <= 28'd0;
-               PoC_frame_field	         <= PoC_interlaced ? !PoC_frame_field : 1'b0;	// framebuffer flip/flop 				 
-             end            
+             if (vram_drive_lz4) begin
+               PoC_frame_ddr   <= PoC_frame_lz4_ddr;         
+               PoC_frame_vram  <= PoC_frame_lz4_ddr;         
+               PoC_frame_field	<= PoC_interlaced ? !PoC_frame_field : 1'b0;	// framebuffer flip/flop 	
+//PoC_test1 <= vram_end_frame ? 1'b0 : 1'b1;
+               vram_reset      <= !vram_end_frame;			 
+             end                                                       
              PoC_frame_lz4              <= PoC_frame_lz4_ddr;
+             PoC_frame_field_lz4        <= PoC_interlaced ? !PoC_frame_field_lz4 : 1'b0;
              PoC_subframe_lz4_ddr_bytes <= 24'd0;
              PoC_subframe_blit_lz4_ddr  <= 16'd0; 
              PoC_subframe_lz4_bytes     <= 24'd0;
              PoC_subframe_blit_lz4      <= 16'd0; 
              PoC_subframe_wr_bytes      <= 28'd0;
-             PoC_frame_rgb_offset       <= 2'd0;                                                             
+             PoC_frame_rgb_offset_lz4   <= 2'd0;  
+             PoC_subframe_px_lz4        <= 24'd0;   
+             PoC_lz4_resume             <= 1'b0;   
+             vram_drive_lz4             <= 1'b0;                                
              state                      <= S_Dispatcher; 
-           end else state               <= S_Blit_Prepare_Lz4;           
+           end else state               <= cmd_fskip ? S_Dispatcher : S_Blit_Prepare_Lz4;           
+                   
          end
 
          S_Defaults: 
@@ -1308,6 +1354,9 @@ reg vga_reset = 1'b1;
 reg vga_frame_reset = 1'b0;
 reg vram_active = 1'b0;
 reg vram_reset = 1'b0;
+
+reg vram_drive_raw = 1'b0;
+reg vram_drive_lz4 = 1'b0;
 
 wire[7:0] r_core, g_core, b_core;
 wire hsync_core, vsync_core,  vblank_core, hblank_core, vga_de_core;
@@ -1497,20 +1546,18 @@ wire[63:0] lz4_uncompressed_long;
 wire [31:0] lz4_uncompressed_bytes;
 wire[3:0] lz4_state;
 
-/* DEBUG
-wire lz4_read_ready_bis;
-wire [31:0] lz4_llegits, lz4_gravats;
-reg[7:0] lz4_burst = 0;
-*/
-
+/* DEBUG */
+/*wire lz4_read_ready_bis;
+wire [31:0] lz4_llegits, lz4_gravats;*/
+//reg[7:0] lz4_burst = 0;
 
 lz43 lz4
 (           
  .lz4_clk                (clk_sys),     
  .lz4_reset              (lz4_reset), 
- .lz4_mode_64            (1'b1),
+ .lz4_mode_64            (1'b1),    
  .lz4_run                (lz4_run),     
- .lz4_stop               (lz4_stop),
+ .lz4_stop               (ddr_data_write && ddr_busy ? 1'b1 : lz4_stop), // last uncompressed not writed!
  .lz4_compressed_bytes   (lz4_compressed_bytes),       
  .lz4_compressed_long    (lz4_compressed_long),
  .lz4_write_long         (lz4_write_long),
@@ -1524,11 +1571,11 @@ lz43 lz4
  .lz4_done               (lz4_done),               
  .lz4_error              (lz4_error),
  .lz4_state              (lz4_state)
-/* DEBUG
- .lz4_llegits            (lz4_llegits),
+/* DEBUG */
+ /*.lz4_llegits            (lz4_llegits),
  .lz4_gravats            (lz4_gravats),
- .lz4_read_ready(lz4_read_ready)
-*/
+ .lz4_read_ready(lz4_read_ready)*/
+
                      
 );   
 

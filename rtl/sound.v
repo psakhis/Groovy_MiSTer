@@ -31,7 +31,7 @@ module sound (
 );
                                 
 
-parameter VRAM_SIZE = 32'h4000; 
+parameter VRAM_SIZE = 32'h8000; 
 parameter MAX_BURST = 32'd512;
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -141,8 +141,12 @@ always@(posedge clk_sys) begin
    sound_wrreq[3] <= 1'b0;
      
    if (sound_wren1 && vga_frame >= 32'd1) begin    
-     if (samples_skip < samples_lost) begin
-       samples_skip <= samples_skip + 1'b1;  //avoid acum. delayed sound
+     if (samples_skip < samples_lost) begin //avoid acum. delayed sound
+       if (sound_chan > 1'b1) begin
+         samples_skip <= samples_skip + ((sound_wren1 + sound_wren2 + sound_wren3 + sound_wren4) >> 1);
+       end else begin
+         samples_skip <= samples_skip + sound_wren1 + sound_wren2 + sound_wren3 + sound_wren4;
+       end         
      end else begin        
        fifo_sound_in[fifo_wr1] <= sound_in1;
        sound_wrreq[fifo_wr1]   <= 1'b1;          

@@ -39,7 +39,8 @@ module ddram
         input  [7:0]  mem_burst,            
         input         mem_wr,           
         output        mem_busy,
-        output        mem_dready                                                                          
+        output        mem_dready      
+                                                                                
 );
 
 reg  [7:0] ram_burst;
@@ -63,12 +64,13 @@ always @(posedge DDRAM_CLK) begin
         reg old_rd, old_we;
         
         old_rd <= mem_rd; 
-      //  old_we <= mem_wr;  
+       // old_we <= mem_wr;  
    
-      //  if (mem_wr && !old_we) write_req <= 1'b1; 
+       // if (mem_wr && !old_we) write_req <= 1'b1; 
         if (mem_rd && !old_rd) read_req  <= 1'b1; 
         
-        data_ready <= 1'b0;        
+        data_ready <= 1'b0;  
+           
         
         if(!DDRAM_BUSY) begin    
                 ram_write <= 1'b0;
@@ -77,15 +79,16 @@ always @(posedge DDRAM_CLK) begin
                 case(state)
                         3'b000: 
                         begin                                
-                         // if (write_req && !read_req) begin                                                 
+                      //    if (write_req && !read_req) begin                                                 
                           if (mem_wr && !read_req) begin                                                 
                             ram_data      <= mem_din; 
                             ram_address   <= mem_addr; 
-                            ram_write     <= 1'b1;                                          
-                           // state         <= 3'b001;                       
-                            state         <= 3'b000;                       
+                            ram_write     <= 1'b1;                                                                                         
+                          //  state         <= 3'b001;                       
+                          //  state         <= 3'b000;                       
                           end                            
-                           else if (read_req && !write_req) begin                           
+                           //else if (read_req && !write_req) begin                           
+                           else if (read_req && !mem_wr) begin                           
                             ram_address   <= mem_addr;                                                                                                              
                             ram_read      <= 1'b1;                     
                             ram_burst     <= mem_burst;      
@@ -94,9 +97,9 @@ always @(posedge DDRAM_CLK) begin
                            end                                                                                                            
                         end      
                         3'b001:        
-                        begin                               
-                           write_req           <= 1'b0;
-                           state               <= 3'b000;                                                                       
+                        begin                                                   
+                          write_req           <= 1'b0;
+                          state               <= 3'b000;                                                                       
                         end                     
                         3'b010:                
                         begin  
@@ -112,7 +115,8 @@ always @(posedge DDRAM_CLK) begin
                           end    
                         end                                                 
                 endcase
-        end 
+        end
+
    
 end
 
@@ -126,8 +130,8 @@ assign DDRAM_WE       = ram_write;
 
 assign mem_dout         = ram_out;
 assign mem_dready       = data_ready;
-//assign mem_busy         = write_req || read_req;
-assign mem_busy         = mem_wr || read_req;
+assign mem_busy         = DDRAM_BUSY || read_req;
+
 
 
 endmodule
