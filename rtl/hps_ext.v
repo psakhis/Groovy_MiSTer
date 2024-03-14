@@ -22,7 +22,7 @@ module hps_ext
 (
     input             clk_sys,
     inout      [35:0] EXT_BUS,   
-    input      [8:0]  state, 
+    input      [7:0]  state, 
     input             hps_rise,     
     input      [1:0]  hps_verbose,  
     input             hps_blit,     
@@ -53,8 +53,8 @@ module hps_ext
 	   output reg        cmd_blit_lz4 = 0,
 	   output reg [31:0] lz4_size = 0,
     output reg        lz4_AB = 0,
-    input      [31:0] lz4_uncompressed_bytes
-/*
+    input      [31:0] lz4_uncompressed_bytes,
+
     input      [31:0]  PoC_subframe_wr_bytes,
     input             lz4_run,
     input             PoC_lz4_resume,
@@ -69,7 +69,7 @@ module hps_ext
     input     [31:0]  lz4_llegits,
     input     [31:0]  PoC_subframe_lz4_bytes,
     input     [15:0]  PoC_subframe_blit_lz4
-*/
+
     
  );
 
@@ -109,7 +109,7 @@ reg        hps_vram_ready;
 
 
 reg[31:0]  hps_lz4_uncompressed_bytes;
-/*
+
 reg[7:0]   hps_state;
 reg[31:0]  hps_PoC_subframe_wr_bytes;
 reg        hps_PoC_test1;
@@ -125,7 +125,7 @@ reg[31:0]  hps_lz4_gravats;
 reg[31:0]  hps_lz4_llegits;
 reg[31:0]  hps_PoC_subframe_lz4_bytes;
 reg[15:0]  hps_PoC_subframe_blit_lz4;
-*/                              
+                             
 
 always@(posedge clk_sys) begin
         reg [15:0] cmd;
@@ -183,7 +183,7 @@ always@(posedge clk_sys) begin
                                               hps_vram_ready     <= vram_ready;                                          
                                               hps_lz4_uncompressed_bytes <= lz4_uncompressed_bytes;
 
-/* DEBUG
+/* DEBUG */
 																																													 hps_state <= state;
                                               hps_PoC_subframe_wr_bytes <= PoC_subframe_wr_bytes;
                                               hps_PoC_test1 <= PoC_test1;
@@ -199,7 +199,7 @@ always@(posedge clk_sys) begin
 																																														hps_lz4_llegits <= lz4_llegits;
 																																														hps_PoC_subframe_lz4_bytes <= PoC_subframe_lz4_bytes;
 																																													 hps_PoC_subframe_blit_lz4 <= PoC_subframe_blit_lz4;
-*/
+
 
                                            end
                                            2: io_dout <= hps_vga_frame[31:16];                                                     
@@ -210,9 +210,9 @@ always@(posedge clk_sys) begin
                                            7: io_dout <= {8'd0, hps_vram_queue[23:16]};                                           
                                            8: io_dout <= hps_lz4_uncompressed_bytes[15:0];												 
 													                              9: io_dout <= hps_lz4_uncompressed_bytes[31:16]; 
-                              /* DEBUG
-                 10: io_dout <= hps_state;
-                    11: io_dout <= hps_PoC_subframe_wr_bytes[15:0];												 
+                              /* DEBUG */
+                                           10: io_dout <= hps_state;
+                                           11: io_dout <= hps_PoC_subframe_wr_bytes[15:0];												 
 													                              12: io_dout <= hps_PoC_subframe_wr_bytes[31:16]; 
                                            13: io_dout <= {9'd0, hps_cmd_fskip, hps_PoC_lz4_AB, hps_lz4_stop, hps_PoC_test2, hps_PoC_test1, hps_PoC_lz4_resume, hps_lz4_run};
                                            14: io_dout <= hps_lz4_compressed_bytes[15:0];												 
@@ -223,7 +223,7 @@ always@(posedge clk_sys) begin
 													                              19: io_dout <= hps_lz4_llegits[31:16]; 
                                            20: io_dout <= hps_PoC_subframe_lz4_bytes[15:0];												 
 													                              21: io_dout <= hps_PoC_subframe_lz4_bytes[31:16]; 
-                                           22: io_dout <= hps_PoC_subframe_blit_lz4;			*/																																													  
+                                           22: io_dout <= hps_PoC_subframe_blit_lz4;																																														  
                                         endcase
                                                 
                                GET_GROOVY_HPS: case(byte_cnt)
