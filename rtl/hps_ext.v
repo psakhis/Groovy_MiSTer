@@ -30,6 +30,7 @@ module hps_ext
     input             hps_audio,
     output reg [1:0]  sound_rate = 0,
     output reg [1:0]  sound_chan = 0,
+    output reg        rgb_mode = 0,
     input             vga_frameskip,        
     input      [15:0] vga_vcount,   
     input      [31:0] vga_frame,    
@@ -53,15 +54,14 @@ module hps_ext
 	   output reg        cmd_blit_lz4 = 0,
 	   output reg [31:0] lz4_size = 0,
     output reg        lz4_AB = 0,
-    input      [31:0] lz4_uncompressed_bytes,
-
+    input      [31:0] lz4_uncompressed_bytes
+/* DEBUG
     input      [31:0]  PoC_subframe_wr_bytes,
     input             lz4_run,
     input             PoC_lz4_resume,
     input             PoC_test1,
     input             PoC_test2,
     input             cmd_fskip,
-
     input             lz4_stop,
     input             PoC_lz4_AB,
     input     [31:0]  lz4_compressed_bytes,
@@ -69,7 +69,7 @@ module hps_ext
     input     [31:0]  lz4_llegits,
     input     [31:0]  PoC_subframe_lz4_bytes,
     input     [15:0]  PoC_subframe_blit_lz4
-
+*/
     
  );
 
@@ -110,6 +110,7 @@ reg        hps_vram_ready;
 
 reg[31:0]  hps_lz4_uncompressed_bytes;
 
+/* DEBUG
 reg[7:0]   hps_state;
 reg[31:0]  hps_PoC_subframe_wr_bytes;
 reg        hps_PoC_test1;
@@ -117,7 +118,6 @@ reg        hps_PoC_test2;
 reg        hps_PoC_lz4_resume;
 reg        hps_lz4_run;
 reg        hps_cmd_fskip;
-
 reg        hps_lz4_stop;
 reg        hps_PoC_lz4_AB;
 reg[31:0]  hps_lz4_compressed_bytes;
@@ -125,7 +125,7 @@ reg[31:0]  hps_lz4_gravats;
 reg[31:0]  hps_lz4_llegits;
 reg[31:0]  hps_PoC_subframe_lz4_bytes;
 reg[15:0]  hps_PoC_subframe_blit_lz4;
-                             
+                             */
 
 always@(posedge clk_sys) begin
         reg [15:0] cmd;
@@ -183,7 +183,7 @@ always@(posedge clk_sys) begin
                                               hps_vram_ready     <= vram_ready;                                          
                                               hps_lz4_uncompressed_bytes <= lz4_uncompressed_bytes;
 
-/* DEBUG */
+/* DEBUG 
 																																													 hps_state <= state;
                                               hps_PoC_subframe_wr_bytes <= PoC_subframe_wr_bytes;
                                               hps_PoC_test1 <= PoC_test1;
@@ -199,18 +199,18 @@ always@(posedge clk_sys) begin
 																																														hps_lz4_llegits <= lz4_llegits;
 																																														hps_PoC_subframe_lz4_bytes <= PoC_subframe_lz4_bytes;
 																																													 hps_PoC_subframe_blit_lz4 <= PoC_subframe_blit_lz4;
-
+*/
 
                                            end
                                            2: io_dout <= hps_vga_frame[31:16];                                                     
                                            3: io_dout <= hps_vga_vcount; 
-                                           4: io_dout <= hps_vram_pixels[15:0];                                            
-                                           5: io_dout <= {(state == 8'd0) ? 1'b0 : 1'b1, hps_audio, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready, hps_vram_pixels[23:16]};    
-                                           6: io_dout <= hps_vram_queue[15:0];
-                                           7: io_dout <= {8'd0, hps_vram_queue[23:16]};                                           
+                                           4: io_dout <= {hps_vram_queue[7:0], (state == 8'd0) ? 1'b0 : 1'b1, hps_audio, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready};    
+                                           5: io_dout <= hps_vram_queue[23:8];                                                                                       
+                                           6: io_dout <= hps_vram_pixels[15:0];
+                                           7: io_dout <= {8'd0, hps_vram_pixels[23:16]};                                           
                                            8: io_dout <= hps_lz4_uncompressed_bytes[15:0];												 
 													                              9: io_dout <= hps_lz4_uncompressed_bytes[31:16]; 
-                              /* DEBUG */
+                              /* DEBUG 
                                            10: io_dout <= hps_state;
                                            11: io_dout <= hps_PoC_subframe_wr_bytes[15:0];												 
 													                              12: io_dout <= hps_PoC_subframe_wr_bytes[31:16]; 
@@ -223,7 +223,8 @@ always@(posedge clk_sys) begin
 													                              19: io_dout <= hps_lz4_llegits[31:16]; 
                                            20: io_dout <= hps_PoC_subframe_lz4_bytes[15:0];												 
 													                              21: io_dout <= hps_PoC_subframe_lz4_bytes[31:16]; 
-                                           22: io_dout <= hps_PoC_subframe_blit_lz4;																																														  
+                                           22: io_dout <= hps_PoC_subframe_blit_lz4;		
+*/																																												  
                                         endcase
                                                 
                                GET_GROOVY_HPS: case(byte_cnt)
@@ -236,11 +237,13 @@ always@(posedge clk_sys) begin
                                              cmd_init    <= io_din[0];														  
                                              sound_rate  <= 0;
                                              sound_chan  <= 0;
+                                             rgb_mode    <= 0;
                                            end  
                                            2:
                                            begin
                                              sound_rate  <= io_din[1:0];
-                                             sound_chan  <= io_din[3:2];                                                                                                                                              
+                                             sound_chan  <= io_din[3:2];   
+                                             rgb_mode    <= io_din[4];                                                                                                        
                                            end                                                                                                                  
                                          endcase 
                                                 

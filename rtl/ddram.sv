@@ -54,23 +54,19 @@ reg  [7:0] ram_be = 8'hFF;
 reg  [7:0] ram_index = 0;
 
 reg data_ready = 0;
-reg write_req = 0;
 reg read_req = 0;
 
 reg [2:0] state = 3'b000;
 
 always @(posedge DDRAM_CLK) begin                                       
         
-        reg old_rd, old_we;
+        reg old_rd;
         
-        old_rd <= mem_rd; 
-       // old_we <= mem_wr;  
-   
-       // if (mem_wr && !old_we) write_req <= 1'b1; 
+        old_rd <= mem_rd;       
+         
         if (mem_rd && !old_rd) read_req  <= 1'b1; 
         
-        data_ready <= 1'b0;  
-           
+        data_ready <= 1'b0;             
         
         if(!DDRAM_BUSY) begin    
                 ram_write <= 1'b0;
@@ -78,29 +74,20 @@ always @(posedge DDRAM_CLK) begin
                 
                 case(state)
                         3'b000: 
-                        begin                                
-                      //    if (write_req && !read_req) begin                                                 
+                        begin                                                                                                      
                           if (mem_wr && !read_req) begin                                                 
                             ram_data      <= mem_din; 
                             ram_address   <= mem_addr; 
-                            ram_write     <= 1'b1;                                                                                         
-                          //  state         <= 3'b001;                       
-                          //  state         <= 3'b000;                       
-                          end                            
-                           //else if (read_req && !write_req) begin                           
-                           else if (read_req && !mem_wr) begin                           
+                            ram_write     <= 1'b1;                                                                                                                                   
+                          end                                                                               
+                          else if (read_req && !mem_wr) begin                           
                             ram_address   <= mem_addr;                                                                                                              
                             ram_read      <= 1'b1;                     
                             ram_burst     <= mem_burst;      
                             ram_index     <= 8'd1;                                                                  
                             state         <= 3'b010;
-                           end                                                                                                            
-                        end      
-                        3'b001:        
-                        begin                                                   
-                          write_req           <= 1'b0;
-                          state               <= 3'b000;                                                                       
-                        end                     
+                          end                                                                                                            
+                        end                                                
                         3'b010:                
                         begin  
                           if (DDRAM_DOUT_READY) begin   

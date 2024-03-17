@@ -48,8 +48,8 @@ class GroovyMister
 	
 	// Close connection
 	void CmdClose(void);	
-	// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2)
-	uint8_t CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan);
+	// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888)
+	uint8_t CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
 	// Change resolution (check https://github.com/antonioginer/switchres) with modeline
 	void CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
 	// Stream frame, vCountSync = 0 for auto frame delay or number of vertical line to sync with, margin with nanoseconds for auto frame delay)
@@ -102,6 +102,7 @@ class GroovyMister
         char *m_pBufferAudio;
         uint8_t m_lz4Frames;
         uint8_t m_soundChan;
+        uint8_t m_rgbMode;
         uint32_t m_RGBSize;
         uint8_t  m_interlace;
         uint16_t m_vTotal;

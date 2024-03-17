@@ -57,6 +57,8 @@ GroovyMister::GroovyMister()
 	m_verbose = 0;
 	m_lz4Frames = 0;
 	m_soundChan = 0;
+	m_rgbMode = 0;
+	
 	fpga.frame = 0;
  	fpga.frameEcho = 0;
  	fpga.vCount = 0;
@@ -118,7 +120,7 @@ void GroovyMister::setVerbose(uint8_t sev)
 	m_verbose = sev;
 }
 
-uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan)
+uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode)
 {   
 	// Set server          	 	                      
 	m_serverAddr.sin_family = AF_INET;
@@ -322,13 +324,15 @@ else
    
    	m_lz4Frames = lz4Frames;
    	m_soundChan = soundChan;
+   	m_rgbMode = rgbMode;
    	
    	m_bufferSend[0] = CMD_INIT;  
    	m_bufferSend[1] = (lz4Frames) ? 1 : 0; //0-RAW or 1-LZ4 ;
    	m_bufferSend[2] = (soundRate == 22050) ? 1 : (soundRate == 44100) ? 2 : (soundRate == 48000) ? 3 : 0;  
   	m_bufferSend[3] = soundChan;            
-   
-  	Send(&m_bufferSend[0], 4);   
+        m_bufferSend[4] = rgbMode;            
+        
+  	Send(&m_bufferSend[0], 5);   
 
 #ifdef WIN32  
 if (USE_RIO)
@@ -354,8 +358,8 @@ if (USE_RIO)
 
 void GroovyMister::CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace)
 {
-	m_RGBSize = hActive * vActive * 3;
-	
+	m_RGBSize = ((m_rgbMode) ? (hActive * vActive) << 2 : hActive * vActive * 3) >> interlace;
+		
 	m_widthTime = 10 * round((double) hTotal * (1 / pClock)); //in nanosec, time to raster 1 line
 	m_frameTime = (m_widthTime * vTotal) >> interlace; 
 	m_interlace = interlace;
@@ -389,8 +393,8 @@ void GroovyMister::CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
 		}
 		else
 		{
-			uint32_t timeCalc = margin + m_emulationTime - m_streamTime;
-			vSync = m_vTotal - round(m_vTotal * timeCalc) / m_frameTime; 
+			uint32_t timeCalc = (margin + m_emulationTime >= m_frameTime) ? 0 : margin + m_emulationTime - m_streamTime;
+			vSync = (timeCalc == 0) ? 1 : m_vTotal - round(m_vTotal * timeCalc) / m_frameTime; 			
 		}
 	}	
 	
@@ -521,7 +525,7 @@ if (USE_RIO)
         		}	
   		}  	
   			
-        } while ((len > 0 && m_frame != fpga.frameEcho) || (!getACKresult && dwNanoseconds > diff)); 		  	          
+        } while ((len > 0) || (!getACKresult && dwNanoseconds > diff)); 		  	          
     	return getACKresult;
 }
 
@@ -529,33 +533,26 @@ void GroovyMister::WaitSync()
 {
 	m_tickStart = m_tickSync;
 	setTimeEnd();
-	m_emulationTime = DiffTime(); 	
-	
-	int diffRaster = DiffTimeRaster();		
-	
-	uint32_t sleepTime = (m_frameTime - m_emulationTime + diffRaster > 0) ? (fpga.frame == 0) ? 0 : m_frameTime - m_emulationTime + diffRaster : 0;
-	uint32_t prevSleepTime = sleepTime;
-	uint32_t realTime = 0;
-	setTimeStart();
+	m_emulationTime = DiffTime(); 				
+	int sleepTime = (m_emulationTime >= m_frameTime) ? 0 : m_frameTime - m_emulationTime;	
+	int prevSleepTime = sleepTime;
+	uint32_t realTime = 0;	
+	setTimeStart();	
 	do
 	{
-		sleepTime += DiffTimeRaster();
+		int diffRaster = DiffTimeRaster();
+		sleepTime = (diffRaster < 0 && abs(diffRaster) > sleepTime) ? 0 : sleepTime + diffRaster;		
 		setTimeEnd();
 		realTime = DiffTime();
 		
-	} while (realTime <= sleepTime);
+	} while (realTime <= (uint32_t) sleepTime);
 		     	 	
 	m_tickSync = m_tickEnd;   
-	
-	if ((fpga.frame != 0 && sleepTime == 0) || (sleepTime + 10000 < realTime)) //sleep?
+        
+	if (((uint32_t) sleepTime + 10000 < realTime)) //sleep?
         {
         	LOG(1,"[MiSTer] Frame %d Sleep prev=%d/final=%d/real=%d (frameTime=%d blitTime=%d emulationTime=%d) (vcount_vsync=%d/%d vcount_gpu=%d/%d)\n", m_frame, prevSleepTime, sleepTime, realTime, m_frameTime, m_streamTime, m_emulationTime, fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount);	      
-	}
-	else
-	{
-		LOG(2,"[MiSTer] Frame %d Sleep prev=%d/final=%d/real=%d (frameTime=%d blitTime=%d emulationTime=%d) (vcount_vsync=%d/%d vcount_gpu=%d/%d)\n", m_frame, prevSleepTime, sleepTime, realTime, m_frameTime, m_streamTime, m_emulationTime, fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount);	      
-	}        	
-	
+	}     		
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 
@@ -746,6 +743,13 @@ int GroovyMister::DiffTimeRaster(void)
 	}	
 	if (fpga.frameEcho != frameEcho)
 	{
+		//patch if emulator freezes to align frame counter
+		/*
+  		if ((fpga.frameEcho + 1) < fpga.frame) 
+  		{  		
+  			LOG(2,"[MiSTer] patch %d (patched=%d) %d / %d %d \n", fpga.frameEcho, fpga.frame + 1, fpga.vCountEcho, fpga.frame, fpga.vCount);
+  	 		fpga.frameEcho = fpga.frame + 1;  	  	 		 		
+  		}*/
 		LOG(2,"[MiSTer] echo %d %d / %d %d \n", fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount);
 		uint32_t vCount1 = ((fpga.frameEcho - 1) * m_vTotal + fpga.vCountEcho) >> m_interlace;
 		uint32_t vCount2 = (fpga.frame * m_vTotal + fpga.vCount) >> m_interlace;
