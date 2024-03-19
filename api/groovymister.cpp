@@ -357,12 +357,19 @@ if (USE_RIO)
 }
 
 void GroovyMister::CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace)
-{
-	m_RGBSize = ((m_rgbMode) ? (hActive * vActive) << 2 : hActive * vActive * 3) >> interlace;
-		
+{	
+	uint8_t interlace_modeline = (interlace != 2) ? interlace : 1;
+	
+	m_RGBSize = (m_rgbMode) ? (hActive * vActive) << 2 : hActive * vActive * 3;
+        
+        if (interlace == 1)
+        {
+        	m_RGBSize = m_RGBSize >> 1;	
+        }
+                        		
 	m_widthTime = 10 * round((double) hTotal * (1 / pClock)); //in nanosec, time to raster 1 line
-	m_frameTime = (m_widthTime * vTotal) >> interlace; 
-	m_interlace = interlace;
+	m_frameTime = (m_widthTime * vTotal) >> interlace_modeline; 
+	m_interlace = interlace_modeline;
 	m_vTotal    = vTotal;	
 		
 	m_bufferSend[0] = CMD_SWITCHRES;             
@@ -548,6 +555,8 @@ void GroovyMister::WaitSync()
 	} while (realTime <= (uint32_t) sleepTime);
 		     	 	
 	m_tickSync = m_tickEnd;   
+
+       // LOG(2,"[MiSTer] Frame %d Sleep prev=%d/final=%d/real=%d (frameTime=%d blitTime=%d emulationTime=%d) (vcount_vsync=%d/%d vcount_gpu=%d/%d)\n", m_frame, prevSleepTime, sleepTime, realTime, m_frameTime, m_streamTime, m_emulationTime, fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount);	      
         
 	if (((uint32_t) sleepTime + 10000 < realTime)) //sleep?
         {
