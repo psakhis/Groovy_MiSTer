@@ -301,7 +301,7 @@ hps_ext hps_ext
         .vga_vcount(vga_vcount), 
         .vga_frame(vga_frame),
         .vga_vblank(vblank_core),
-        .vga_f1(VGA_F1),      
+        .vga_f1(VGA_F1),                  
         .vram_pixels(vram_pixels),
         .vram_queue(vram_queue),                 
         .vram_synced(vram_synced),
@@ -1145,7 +1145,7 @@ always @(posedge clk_sys) begin
              state                    <= cmd_fskip || vram_drive_raw ? S_Dispatcher : S_Blit_Lz4; // if vram is controlled by fskip, wait vblank
              if (PoC_lz4_resume_audio || PoC_lz4_resume_blit) begin
                state                  <= cmd_fskip ? S_Dispatcher : S_Blit_Lz4; 
-               PoC_frame_lz4_FB       <= vram_drive_raw || PoC_lz4_resume_blit ? 1'b1 : 1'b0;
+               PoC_frame_lz4_FB       <= vram_drive_lz4 ? 1'b0 : 1'b1;
              end else begin
                if (ddr_data[23:0] > PoC_frame_lz4_ddr && PoC_subframe_lz4_bytes != 0) begin  // finish current frame before new one
                  PoC_subframe_lz4_ddr_bytes <= lz4_compressed_bytes; 
