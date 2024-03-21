@@ -21,7 +21,9 @@ module vga (
    input [7:0]  VFP,  // unused time before vsync
    input [7:0]  VS,   // width of vsync
    input [7:0]  VBP,  // unused time after vsync
-   input [7:0]  interlaced,  
+   input        interlaced,  
+   input        FB_interlaced,
+   input        FB_1st_field,
      
    input  vram_active,
    input  vram_reset,              
@@ -110,6 +112,13 @@ assign vblank    = vb;
 assign hblank    = hb;
 assign vga_f1    = field;
 
+/////////////////////////////////////////////////////////////////////////////
+
+reg       FB_prev_interlaced = 1'b0;
+reg       FB_field           = 1'b0;
+reg       FB_prev_1st_field  = 1'b0;
+reg[15:0] FB_H               = 16'd256;
+reg[15:0] FB_V               = 16'd240;
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -262,51 +271,173 @@ always@(posedge clk_sys) begin
      fifo_wr1           <= 2'd0;                                                                                                                  
      fifo_wr2           <= 2'd1;                                                                                                                  
      fifo_wr3           <= 2'd2;                                                                                                                  
-   end            
+   end               
       
    fifo_rgb_write[0] <= 1'b0;  	
    fifo_rgb_write[1] <= 1'b0;  	
    fifo_rgb_write[2] <= 1'b0;  	
                                
    if (vram_wren1) begin    	                        
-
-     fifo_rgb_r_in[fifo_wr1]  <= r_vram_in1;
-     fifo_rgb_g_in[fifo_wr1]  <= g_vram_in1;
-     fifo_rgb_b_in[fifo_wr1]  <= b_vram_in1;	  
-     fifo_rgb_write[fifo_wr1] <= 1'b1;      
+     vram_pixel_counter         <= vram_end_frame ? 24'd1 : (vram_pixel_counter + 24'd1);      
+     fifo_rgb_r_in[fifo_wr1]    <= r_vram_in1;
+     fifo_rgb_g_in[fifo_wr1]    <= g_vram_in1;
+     fifo_rgb_b_in[fifo_wr1]    <= b_vram_in1;	  
+     fifo_rgb_write[fifo_wr1]   <= 1'b1;    
+     fifo_wr1                   <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
+     fifo_wr2                   <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
+     fifo_wr3                   <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1;         
+   end
  		
-     if (vram_wren2) begin
-       fifo_rgb_r_in[fifo_wr2]  <= r_vram_in2;
-       fifo_rgb_g_in[fifo_wr2]  <= g_vram_in2;
-       fifo_rgb_b_in[fifo_wr2]  <= b_vram_in2;	  
-       fifo_rgb_write[fifo_wr2] <= 1'b1;       		
+   if (vram_wren2) begin
+     vram_pixel_counter       <= vram_end_frame ? 24'd2 : (vram_pixel_counter + 24'd2);
+     fifo_rgb_r_in[fifo_wr2]  <= r_vram_in2;
+     fifo_rgb_g_in[fifo_wr2]  <= g_vram_in2;
+     fifo_rgb_b_in[fifo_wr2]  <= b_vram_in2;	  
+     fifo_rgb_write[fifo_wr2] <= 1'b1;
+     fifo_wr1                 <= fifo_wr1 == 2 ? 2'd1 : fifo_wr1 == 0 ? 2'd2 : 2'd0; 
+     fifo_wr2                 <= fifo_wr2 == 2 ? 2'd1 : fifo_wr2 == 0 ? 2'd2 : 2'd0; 
+     fifo_wr3                 <= fifo_wr3 == 2 ? 2'd1 : fifo_wr3 == 0 ? 2'd2 : 2'd0;        		
+   end
 
-       if (vram_wren3) begin
-         fifo_rgb_r_in[fifo_wr3]  <= r_vram_in3;
-         fifo_rgb_g_in[fifo_wr3]  <= g_vram_in3;
-         fifo_rgb_b_in[fifo_wr3]  <= b_vram_in3;	  
-         fifo_rgb_write[fifo_wr3] <= 1'b1;       		
-         vram_pixel_counter <= vram_end_frame ? 24'd3 : (vram_pixel_counter + 24'd3);
-       end else begin 
-         fifo_wr1 <= fifo_wr1 == 2 ? 2'd1 : fifo_wr1 == 0 ? 2'd2 : 2'd0; 
-         fifo_wr2 <= fifo_wr2 == 2 ? 2'd1 : fifo_wr2 == 0 ? 2'd2 : 2'd0; 
-         fifo_wr3 <= fifo_wr3 == 2 ? 2'd1 : fifo_wr3 == 0 ? 2'd2 : 2'd0; 
-         vram_pixel_counter <= vram_end_frame ? 24'd2 : (vram_pixel_counter + 24'd2);          
+   if (vram_wren3) begin
+     vram_pixel_counter       <= vram_end_frame ? 24'd3 : (vram_pixel_counter + 24'd3);
+     fifo_rgb_r_in[fifo_wr3]  <= r_vram_in3;
+     fifo_rgb_g_in[fifo_wr3]  <= g_vram_in3;
+     fifo_rgb_b_in[fifo_wr3]  <= b_vram_in3;	  
+     fifo_rgb_write[fifo_wr3] <= 1'b1;  
+     fifo_wr1                 <= fifo_wr1;     		
+     fifo_wr2                 <= fifo_wr2;     		
+     fifo_wr3                 <= fifo_wr3;     		
+   end  
+
+   //frambuffer progressive vs interlaced modeline
+   if (vga_reset || FB_prev_interlaced != interlaced || FB_V != V) begin
+     FB_prev_interlaced       <= interlaced; 
+     FB_H                     <= H; 
+     FB_V                     <= V;
+     FB_prev_1st_field        <= FB_1st_field;
+     FB_field                 <= 1'b0; 
+   end
+   
+   if (vram_reset) begin
+     FB_H                     <= H;
+   end
+   
+   if (interlaced && !FB_interlaced) begin      
+     if (vram_wren1 && !vram_wren2) begin //only 1 pixel
+       if (!FB_field) begin // cancel write
+         fifo_rgb_write[fifo_wr1] <= 1'b0;
+         fifo_wr1                 <= fifo_wr1;
+         fifo_wr2                 <= fifo_wr2;
+         fifo_wr3                 <= fifo_wr3;
        end
-     end else begin
-       fifo_wr1 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
-       fifo_wr2 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
-       fifo_wr3 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1;
-       vram_pixel_counter <= vram_end_frame ? 24'd1 : (vram_pixel_counter + 24'd1);
+       FB_H <= FB_H > 1 ? FB_H - 1'b1 : H;      
+       if (FB_H == 1) begin //flip_flop field
+         if (vram_pixel_counter + 1 == vga_pixels) begin
+           FB_field          <= !FB_prev_1st_field;
+           FB_prev_1st_field <= !FB_prev_1st_field; 
+         end else begin 
+           FB_field          <= !FB_field; 
+         end
+       end
      end
-           
-   end            
+     if (vram_wren2 && !vram_wren3) begin //only 2 pixels        
+       if (!FB_field) begin // cancel write
+         fifo_rgb_write[fifo_wr1]   <= 1'b0;
+         fifo_rgb_write[fifo_wr2]   <= 1'b0;
+         fifo_wr1                   <= fifo_wr1;
+         fifo_wr2                   <= fifo_wr2;
+         fifo_wr3                   <= fifo_wr3;
+         if (FB_H == 1) begin
+           fifo_rgb_write[fifo_wr1] <= 1'b1; 
+           fifo_rgb_r_in[fifo_wr1]  <= r_vram_in2;
+           fifo_rgb_g_in[fifo_wr1]  <= g_vram_in2;
+           fifo_rgb_b_in[fifo_wr1]  <= b_vram_in2;	
+           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
+           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
+           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1; 
+         end 
+       end else begin
+         if (FB_H == 1) begin
+           fifo_rgb_write[fifo_wr2] <= 1'b0;          
+           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
+           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
+           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1; 
+         end 
+       end
+       FB_H <= FB_H > 2 ? FB_H - 2'd2 : H - 2'd2 + FB_H;  
+       if (FB_H <= 2) begin //flip_flop field
+         if (vram_pixel_counter + 2 == vga_pixels) begin
+           FB_field          <= !FB_prev_1st_field;
+           FB_prev_1st_field <= !FB_prev_1st_field; 
+         end else begin 
+           FB_field          <= !FB_field; 
+         end
+       end
+     end
+     if (vram_wren3) begin //3 pixels  
+       if (!FB_field) begin // cancel write
+         fifo_rgb_write[fifo_wr1]   <= 1'b0;
+         fifo_rgb_write[fifo_wr2]   <= 1'b0;
+         fifo_rgb_write[fifo_wr3]   <= 1'b0;
+         fifo_wr1                   <= fifo_wr1;
+         fifo_wr2                   <= fifo_wr2;
+         fifo_wr3                   <= fifo_wr3;
+         if (FB_H == 1) begin
+           fifo_rgb_write[fifo_wr1] <= 1'b1; 
+           fifo_rgb_write[fifo_wr2] <= 1'b1; 
+           fifo_rgb_r_in[fifo_wr1]  <= r_vram_in2;
+           fifo_rgb_g_in[fifo_wr1]  <= g_vram_in2;
+           fifo_rgb_b_in[fifo_wr1]  <= b_vram_in2;	
+           fifo_rgb_r_in[fifo_wr2]  <= r_vram_in3;
+           fifo_rgb_g_in[fifo_wr2]  <= g_vram_in3;
+           fifo_rgb_b_in[fifo_wr2]  <= b_vram_in3;
+           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd1 : fifo_wr1 == 0 ? 2'd2 : 2'd0; 
+           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd1 : fifo_wr2 == 0 ? 2'd2 : 2'd0; 
+           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd1 : fifo_wr3 == 0 ? 2'd2 : 2'd0; 
+         end 
+         if (FB_H == 2) begin
+           fifo_rgb_write[fifo_wr1] <= 1'b1;          
+           fifo_rgb_r_in[fifo_wr1]  <= r_vram_in3;
+           fifo_rgb_g_in[fifo_wr1]  <= g_vram_in3;
+           fifo_rgb_b_in[fifo_wr1]  <= b_vram_in3;	
+           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
+           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
+           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1;   
+         end
+       end else begin
+         if (FB_H == 1) begin
+           fifo_rgb_write[fifo_wr2] <= 1'b0;          
+           fifo_rgb_write[fifo_wr3] <= 1'b0;  
+           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
+           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
+           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1;           
+         end
+         if (FB_H == 2) begin           
+           fifo_rgb_write[fifo_wr3] <= 1'b0;
+           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd1 : fifo_wr1 == 0 ? 2'd2 : 2'd0; 
+           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd1 : fifo_wr2 == 0 ? 2'd2 : 2'd0; 
+           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd1 : fifo_wr3 == 0 ? 2'd2 : 2'd0;          
+         end  
+       end 
+       FB_H <= FB_H > 3 ? FB_H - 2'd3 : H - 2'd3 + FB_H;
+       if (FB_H <= 3) begin //flip_flop field
+         if (vram_pixel_counter + 3 == vga_pixels) begin
+           FB_field          <= !FB_prev_1st_field;
+           FB_prev_1st_field <= !FB_prev_1st_field; 
+         end else begin 
+           FB_field          <= !FB_field; 
+         end
+       end         
+     end
+   end
+       
         
 end
 
 //vga pixels to get full frame
-always@(posedge clk_sys) begin 
- if (vga_reset || vram_reset) vga_pixels_frame  <= (H * V) >> interlaced;
+always@(posedge clk_sys) begin  
+ if (vga_reset || vram_reset) vga_pixels_frame  <= (H * V) >> FB_interlaced;
 end
 
 // both counters count from the begin of the visibla area
@@ -434,7 +565,8 @@ always@(posedge clk_sys) begin
        fifo_rgb_req[fifo_rd] <= !fifo_ahead && !fifo_rgb_empty[fifo_rd] ? 1'b1 : 1'b0;
        fifo_ahead            <= !fifo_ahead && !fifo_rgb_empty[fifo_rd] ? 1'b1 : fifo_ahead;
 		 
-       if (!vram_start && vram_pixel_counter > 24'd0) begin                                                                                                                                  
+       //if (!vram_start && vram_pixel_counter > 24'd0) begin                                                                                                                                  
+       if (!vram_start && vram_queue > 24'd0) begin                                                                                                                                  
          vram_start     <= 1'b1; 
          vga_started		  <= 1'b1; 		
          pixel_counter  <= 24'd0;
