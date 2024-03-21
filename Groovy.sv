@@ -301,7 +301,7 @@ hps_ext hps_ext
         .vga_vcount(vga_vcount), 
         .vga_frame(vga_frame),
         .vga_vblank(vblank_core),
-        .vga_f1(VGA_F1),
+        .vga_f1(VGA_F1),      
         .vram_pixels(vram_pixels),
         .vram_queue(vram_queue),                 
         .vram_synced(vram_synced),
@@ -695,18 +695,18 @@ always @(posedge clk_sys) begin
   if ((hps_frameskip || cmd_logo) && PoC_frame_vram != 0) begin
 	   if (vga_vcount <= PoC_interlaced && vram_queue == 24'd0) begin // raster at the end of frame and vram is empty
 	     cmd_fskip             <= 1'b1;
-		    PoC_px_frameskip      <= PoC_H;
+		    PoC_px_frameskip      <= (PoC_H << PoC_interlaced) + 24'd3;  // sum 3 for ddr_burst round, * 2 for PoC_interlaced with FB progressive
 		    PoC_state_frameskip   <= S_Blit_Auto_First;     
 	   end else
 	   if (!vblank_core) begin
-	     if (PoC_interlaced && vga_vcount + 2 >= PoC_V && PoC_H > vram_queue && vram_queue + 20 < vram_pixels && vga_pixels > vram_pixels) begin // last line interlaced
+	     if (vga_vcount + 1 + PoC_interlaced >= PoC_V && PoC_H > vram_queue && vram_queue + 20 < vram_pixels && vga_pixels > vram_pixels) begin // last line interlaced
 		      cmd_fskip           <= 1'b1;
 			     PoC_px_frameskip    <= vga_pixels;
 		      PoC_state_frameskip <= S_Blit_Auto_Line;
 		    end else
-		    if (vga_vcount + 1 + PoC_interlaced <= PoC_V && PoC_H > vram_queue && vram_queue + 20 < vram_pixels && ((PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced) > vram_pixels) begin // next line
+		    if (vga_vcount + 1 + PoC_interlaced < PoC_V && PoC_H > vram_queue && vram_queue + 20 < vram_pixels && ((PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced) > vram_pixels) begin // next line
 		      cmd_fskip           <= 1'b1;
-			     PoC_px_frameskip    <= (PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced;
+			     PoC_px_frameskip    <= ((PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced) + 24'd3;
 		      PoC_state_frameskip <= S_Blit_Auto_Line;
 		    end	
 	   end 
@@ -943,11 +943,11 @@ always @(posedge clk_sys) begin
          begin                                                               
            vga_frameskip           <= 1'b1;
            PoC_frame_ddr           <= vga_frame;			  	         	           		  	         	  
-           PoC_subframe_px_ddr     <= PoC_H + 24'd3;                
+           PoC_subframe_px_ddr     <= PoC_px_frameskip;                                          
            PoC_subframe_px_vram    <= 24'd0;
            PoC_subframe_bl_ddr     <= 16'd1;                      
            PoC_subframe_bl_vram    <= 16'd1;                   
-           PoC_subframe_ddr_bytes  <= (rgb_mode) ? (PoC_H << 2) + 24'd12 : (PoC_H << 1) + PoC_H + 24'd9;         
+           PoC_subframe_ddr_bytes  <= (rgb_mode) ? (PoC_px_frameskip << 2) : (PoC_px_frameskip << 1) + PoC_px_frameskip;         
            PoC_subframe_vram_bytes <= 28'd0;             
            PoC_frame_rgb_offset    <= 2'd0;                                     
            vram_reset              <= 1'b1;            
@@ -976,10 +976,10 @@ always @(posedge clk_sys) begin
            end else 
            if (PoC_px_frameskip > vram_pixels) begin                                
              vga_frameskip           <= 1'b1;                                               
-             PoC_subframe_px_ddr     <= PoC_px_frameskip == vga_pixels ? vga_pixels : PoC_px_frameskip + 24'd3;           
+             PoC_subframe_px_ddr     <= PoC_px_frameskip;           
              PoC_subframe_bl_ddr     <= PoC_subframe_bl_vram + 16'd1;                     
              PoC_subframe_bl_vram    <= PoC_subframe_bl_vram + 16'd1;               
-             PoC_subframe_ddr_bytes  <= PoC_px_frameskip == vga_pixels ? (rgb_mode) ? vga_pixels << 2 : (vga_pixels << 1) + vga_pixels : (rgb_mode) ? (PoC_px_frameskip << 2) + 24'd12 : (PoC_px_frameskip << 1) + PoC_px_frameskip + 24'd9;                              
+             PoC_subframe_ddr_bytes  <= (rgb_mode) ? (PoC_px_frameskip << 2) : (PoC_px_frameskip << 1) + PoC_px_frameskip; 
              auto_blit               <= 1'b0;                                               
              state                   <= S_Blit_Prepare_Raw;                                                                   
            end else begin
@@ -1369,6 +1369,7 @@ reg vram_wren1 = 1'b0, vram_wren2 = 1'b0, vram_wren3 = 1'b0;
 reg[7:0] r_vram_in1 = 8'h00, r_vram_in2 = 8'h00, r_vram_in3 = 8'h00;
 reg[7:0] g_vram_in1 = 8'h00, g_vram_in2 = 8'h00, g_vram_in3 = 8'h00;
 reg[7:0] b_vram_in1 = 8'h00, b_vram_in2 = 8'h00, b_vram_in3 = 8'h00;
+
 
 vga vga 
 (           
