@@ -23,8 +23,7 @@ module vga (
    input [7:0]  VBP,  // unused time after vsync
    input        interlaced,  
    input        FB_interlaced,
-   input        FB_1st_field,
-     
+ 
    input  vram_active,
    input  vram_reset,              
    
@@ -68,6 +67,7 @@ module vga (
    output vblank,
    
    output vga_f1
+  
 );
                                 
 parameter R_NO_VRAM = 8'hFF;
@@ -115,8 +115,8 @@ assign vga_f1    = field;
 /////////////////////////////////////////////////////////////////////////////
 
 reg       FB_prev_interlaced = 1'b0;
-reg       FB_field           = 1'b0;
-reg       FB_prev_1st_field  = 1'b0;
+reg       FB_field           = 1'b1;
+reg       FB_first           = 1'b1;
 reg[15:0] FB_H               = 16'd256;
 reg[15:0] FB_V               = 16'd240;
 
@@ -314,11 +314,11 @@ always@(posedge clk_sys) begin
    if (vga_reset || FB_prev_interlaced != interlaced || FB_V != V) begin
      FB_prev_interlaced       <= interlaced; 
      FB_H                     <= H; 
-     FB_V                     <= V;
-     FB_prev_1st_field        <= FB_1st_field;
-     FB_field                 <= 1'b0; 
+     FB_V                     <= V;     
+     FB_first                 <= 1'b1;
+     FB_field                 <= 1'b1; 
    end
-   
+
    if (vram_reset) begin
      FB_H                     <= H;
    end
@@ -333,11 +333,11 @@ always@(posedge clk_sys) begin
        end
        FB_H <= FB_H > 1 ? FB_H - 1'b1 : H;      
        if (FB_H == 1) begin //flip_flop field
-         if (vram_pixel_counter + 1 == vga_pixels) begin
-           FB_field          <= !FB_prev_1st_field;
-           FB_prev_1st_field <= !FB_prev_1st_field; 
+         if (vram_pixel_counter + 1 == vga_pixels_frame) begin
+           FB_field <= FB_first;  
+           FB_first <= !FB_first;    
          end else begin 
-           FB_field          <= !FB_field; 
+           FB_field <= !FB_field; 
          end
        end
      end
@@ -367,11 +367,11 @@ always@(posedge clk_sys) begin
        end
        FB_H <= FB_H > 2 ? FB_H - 2'd2 : H - 2'd2 + FB_H;  
        if (FB_H <= 2) begin //flip_flop field
-         if (vram_pixel_counter + 2 == vga_pixels) begin
-           FB_field          <= !FB_prev_1st_field;
-           FB_prev_1st_field <= !FB_prev_1st_field; 
+         if (vram_pixel_counter + 2 == vga_pixels_frame) begin
+           FB_field <= FB_first;  
+           FB_first <= !FB_first;                       
          end else begin 
-           FB_field          <= !FB_field; 
+           FB_field <= !FB_field; 
          end
        end
      end
@@ -422,11 +422,11 @@ always@(posedge clk_sys) begin
        end 
        FB_H <= FB_H > 3 ? FB_H - 2'd3 : H - 2'd3 + FB_H;
        if (FB_H <= 3) begin //flip_flop field
-         if (vram_pixel_counter + 3 == vga_pixels) begin
-           FB_field          <= !FB_prev_1st_field;
-           FB_prev_1st_field <= !FB_prev_1st_field; 
+         if (vram_pixel_counter + 3 == vga_pixels_frame) begin
+           FB_field <= FB_first;  
+           FB_first <= !FB_first;              
          end else begin 
-           FB_field          <= !FB_field; 
+           FB_field <= !FB_field; 
          end
        end         
      end
