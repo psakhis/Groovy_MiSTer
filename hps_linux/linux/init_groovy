@@ -1,0 +1,18 @@
+#!/bin/busybox sh
+#
+/bin/mount -t proc proc /proc
+/bin/mkdir -p /dev/pts /dev/shm
+/bin/mount -a
+/etc/resync &
+/sbin/swapon -a
+/bin/ln -sf /proc/self/fd /dev/fd
+/bin/ln -sf /proc/self/fd/0 /dev/stdin
+/bin/ln -sf /proc/self/fd/1 /dev/stdout
+/bin/ln -sf /proc/self/fd/2 /dev/stderr
+/bin/hostname -F /etc/hostname
+# now run any rc scripts
+/etc/init.d/rcS
+/bin/loadkeys /etc/kbd.map
+/bin/setfont
+# sysctl -w net.core.rmem_max=2097152
+exec /media/fat/MiSTer_groovy

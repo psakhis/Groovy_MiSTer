@@ -1,0 +1,2 @@
+bootimage=/linux/zImage_dtb
+mmcboot=setenv bootargs console=ttyS0,115200 $v init=/media/fat/linux/init_groovy mem=511M memmap=513M$511M loop.max_part=8 root=$mmcroot loop=linux/linux.img ro rootwait;bootz $loadaddr - $fdt_addr
