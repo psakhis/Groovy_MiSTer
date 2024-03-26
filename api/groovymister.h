@@ -3,13 +3,17 @@
 
 #include <inttypes.h>
 
-#ifdef WIN32 
+#ifdef _WIN32 
  #include <winsock2.h> 
  #include <ws2tcpip.h> 
  #include <mswsock.h> 
  #include "rio.h" 
 #endif
- 
+
+#ifndef GROOVYMISTER_VERSION
+#define GROOVYMISTER_VERSION "1.0.0"
+#endif
+
 #define BUFFER_SIZE 1245312 // 720x576x3
 #define BUFFER_SLICES 846
 #define BUFFER_MTU 1472
@@ -62,12 +66,13 @@ class GroovyMister
 	void WaitSync();
 	
 	void setVerbose(uint8_t sev);
+	const char* getVersion();
  
  private:
 
         uint8_t m_verbose;
 
-#ifdef WIN32 
+#ifdef _WIN32 
         SOCKET m_sockFD;         
         RIO_EXTENSION_FUNCTION_TABLE m_rio;
 	RIO_CQ m_sendQueue;

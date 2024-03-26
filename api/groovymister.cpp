@@ -5,7 +5,7 @@
 #include <math.h>
 #include <cstring> 
 
-#ifndef WIN32 
+#ifndef _WIN32 
  #include <netinet/udp.h>
  #include <sys/types.h> 
  #include <sys/socket.h> 
@@ -18,8 +18,8 @@
  #include <unistd.h> 
 #endif
 
-#include "../lz4/lz4.h"
-#include "../lz4/lz4hc.h"
+#include "lz4/lz4.h"
+#include "lz4/lz4hc.h"
 
 #define USE_RIO 1
 
@@ -99,7 +99,7 @@ void GroovyMister::CmdClose(void)
 {           
    m_bufferSend[0] = CMD_CLOSE;
    Send(&m_bufferSend[0], 1);         
-#ifdef WIN32
+#ifdef _WIN32
 if (USE_RIO)
 {
    m_rio.RIOCloseCompletionQueue(m_sendQueue);
@@ -120,6 +120,11 @@ void GroovyMister::setVerbose(uint8_t sev)
 	m_verbose = sev;
 }
 
+const char* GroovyMister::getVersion()
+{
+	return &GROOVYMISTER_VERSION[0];
+}
+
 uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode)
 {   
 	// Set server          	 	                      
@@ -128,7 +133,7 @@ uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8
 	m_serverAddr.sin_addr.s_addr = inet_addr(misterHost);   
 			
 	// Set socket   
-#ifdef WIN32              
+#ifdef _WIN32              
    	WSADATA wsd;                                           
    	uint16_t rc;
       		   
@@ -334,17 +339,17 @@ else
         
   	Send(&m_bufferSend[0], 5);   
 
-#ifdef WIN32  
+#ifdef _WIN32  
 if (USE_RIO)
 { 	  	
         m_rio.RIOReceive(m_requestQueue, &m_receiveRioBuffer, 1, 0, &m_receiveRioBuffer);  
 }        
 #endif        
 
-        uint32_t ackTime = getACK(16);
+        uint32_t ackTime = getACK(60);
         if (!ackTime)
         {
-        	LOG(0,"[MiSTer] ACK failed with %d ms\n",16); 
+        	LOG(0,"[MiSTer] ACK failed with %d ms\n", 60); 
         	CmdClose();  
         	return 0;        	
         }
@@ -436,7 +441,7 @@ void GroovyMister::CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
         m_streamTime = DiffTime();
         //printf("[DEBUG] Stream time %lu\n",m_streamTime);
 
-#ifdef WIN32  
+#ifdef _WIN32  
 if (USE_RIO)
 { 	  	 	  	
         m_rio.RIOReceive(m_requestQueue, &m_receiveRioBuffer, 1, 0, &m_receiveRioBuffer);  
@@ -466,7 +471,7 @@ uint32_t GroovyMister::getACK(DWORD dwMilliseconds)
 	{
 		setTimeStart();	
 	}
-#ifdef WIN32 
+#ifdef _WIN32 
 if (USE_RIO)
 { 	  	       
 	static const DWORD RIO_MAX_RESULTS = 1000;
@@ -569,7 +574,7 @@ void GroovyMister::WaitSync()
 //
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef WIN32 
+#ifdef _WIN32 
 template <typename TV, typename TM>
 inline TV RoundDown(TV Value, TM Multiple)
 {
@@ -586,7 +591,7 @@ inline TV RoundUp(TV Value, TM Multiple)
 //get aligned memory
 char *GroovyMister::AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount)
 {	
-#ifdef WIN32 	
+#ifdef _WIN32 	
 	SYSTEM_INFO systemInfo;
 	::GetSystemInfo(&systemInfo);
 
@@ -619,7 +624,7 @@ char *GroovyMister::AllocateBufferSpace(const DWORD bufSize, const DWORD bufCoun
 
 void GroovyMister::Send(void *cmd, int cmdSize)
 {
-#ifdef WIN32     
+#ifdef _WIN32     
 if (USE_RIO)
 { 
 	m_sendRioBuffer.Length = cmdSize;  	  	
@@ -634,7 +639,7 @@ void GroovyMister::SendStream(uint8_t whichBuffer, uint32_t bytesToSend, uint32_
 {	
 	DWORD flags = RIO_MSG_DONT_NOTIFY | RIO_MSG_DEFER;
 	uint32_t bytesSended = 0;	
-#ifdef WIN32 
+#ifdef _WIN32 
 if (USE_RIO)
 {	             
         int i=0;
@@ -681,7 +686,7 @@ if (USE_RIO)
 
 inline void GroovyMister::setTimeStart(void)
 {
-#ifdef WIN32
+#ifdef _WIN32
 	QueryPerformanceCounter(&m_tickStart);     
 #else
 	clock_gettime(CLOCK_MONOTONIC, &m_tickStart);     
@@ -690,7 +695,7 @@ inline void GroovyMister::setTimeStart(void)
 
 inline void GroovyMister::setTimeEnd(void)
 {
-#ifdef WIN32
+#ifdef _WIN32
 	QueryPerformanceCounter(&m_tickEnd);     
 #else
 	clock_gettime(CLOCK_MONOTONIC, &m_tickEnd);     
@@ -699,7 +704,7 @@ inline void GroovyMister::setTimeEnd(void)
 	
 uint32_t GroovyMister::DiffTime(void)
 {
-#ifdef WIN32
+#ifdef _WIN32
 	return m_tickEnd.QuadPart - m_tickStart.QuadPart;  
 #else
 	uint32_t diffTime = 0;
