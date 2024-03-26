@@ -25,9 +25,9 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 ## Test build features (experimental)
 - (20240302) New native LZ4 blitting inside FPGA (atm only mednafen is supported)
 - (20240302) New PWM core option (implemented by https://github.com/Jokippo)
-  
-To install on your MiSTer you need replace MiSTer binary, so get from /test-builds/ and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
+- (20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
 
+To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
   
 ## Emulators available
 
