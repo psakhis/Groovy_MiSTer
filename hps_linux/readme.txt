@@ -1,13 +1,7 @@
-Added is_groovy
+Install instructions
 
-Listen on udp port 32100 
+1) Copy MiSTer_groovy to /media/fat. If you are using filezilla, be sure transfer is in binary mode.
+2) Copy "_Utility" contents on your /media/fat/_Utility folder (this folder contains the Groovy.rbf core)
+3) Copy "linux" content folder to your /media/fat/linux folder
 
-Setup rmem_max is NOT needed anymore
-"
- 1) create /etc/sysctl.conf file with "net.core.rmem_max = 2097152" content
- 2) edit /etc/inittab and insert this line before MiSTer starts
-    ...
-    --> ::sysinit:/usr/sbin/sysctl -p
-        ::sysinit:/media/fat/MiSTer &
-    ...
-"
+This method will execute MiSTer_groovy binary when you start core from _Utility/Groovy.rbf 
