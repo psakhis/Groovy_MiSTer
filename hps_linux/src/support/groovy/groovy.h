@@ -3,4 +3,6 @@
 
 void groovy_poll();
 void groovy_stop();
+void groovy_send_keycode(unsigned char joystick, uint32_t map);
+
 #endif

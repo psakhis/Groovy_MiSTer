@@ -140,19 +140,19 @@ char* user_io_create_config_name(int with_ver)
 static char core_name[32] = {};
 static char ovr_name[32] = {};
 static char orig_name[32] = {};
-
-static char filepath_store[1024];
+static int  ovr_samedir = 0;
 
 char *user_io_make_filepath(const char *path, const char *filename)
 {
+	static char filepath_store[1024];
 	snprintf(filepath_store, 1024, "%s/%s", path, filename);
-
 	return filepath_store;
 }
 
-void user_io_name_override(const char* name)
+void user_io_name_override(const char* name, int samedir)
 {
 	snprintf(ovr_name, sizeof(ovr_name), "%s", name);
+	ovr_samedir = samedir;
 }
 
 void user_io_set_core_name(const char *name)
@@ -166,12 +166,18 @@ char *user_io_get_core_name(int orig)
 	return orig ? orig_name : core_name;
 }
 
+char *user_io_get_core_name2()
+{
+	return (ovr_name[0] && ovr_samedir) ? orig_name : core_name;
+}
+
 char *user_io_get_core_path(const char *suffix, int recheck)
 {
 	static char old_name[256] = {};
 	static char tmp[1024] = {};
+	char *name = (ovr_name[0] && ovr_samedir) ? orig_name : core_name;
 
-	if (!suffix) suffix = (!strcasecmp(core_name, "minimig")) ? "Amiga" : core_name;
+	if (!suffix) suffix = (!strcasecmp(name, "minimig")) ? "Amiga" : name;
 	if (recheck || strcmp(old_name, suffix) || !tmp[0])
 	{
 		strcpy(old_name, suffix);
@@ -350,6 +356,7 @@ char is_groovy()
 	if (!is_groovy_type) is_groovy_type = strcasecmp(orig_name, "Groovy") ? 2 : 1;
 	return (is_groovy_type == 1);
 }
+
 
 static int is_no_type = 0;
 static int disable_osd = 0;
@@ -1325,6 +1332,7 @@ void user_io_init(const char *path, const char *xml)
 	core_type = (fpga_core_id() & 0xFF);
 	fio_size = fpga_get_fio_size();
 	io_ver = fpga_get_io_version();
+	printf("I/O Board type: %s\n", fpga_get_io_type() ? "digital" : "analogue");
 
 	if (core_type == CORE_TYPE_8BIT2)
 	{
@@ -1380,6 +1388,13 @@ void user_io_init(const char *path, const char *xml)
 		int ret = system(str);
 		if (!(ret & 0xFF) && ret) break;
 		sleep(1);
+	}
+
+	const char *main = getFullPath(cfg.main);
+	if (strcasecmp(main, getappname()) && FileExists(main))
+	{
+		printf("Current exec is %s, core requires exec %s\n", getappname(), main);
+		app_restart(path, xml, main);
 	}
 
 	uint8_t hotswap[4] = {};
@@ -1704,7 +1719,12 @@ void user_io_digital_joystick(unsigned char joystick, uint32_t map, int newdir)
 
 	if (!is_minimig() && joy_transl == 1 && newdir)
 	{
-		user_io_l_analog_joystick(joystick, (map & 2) ? 128 : (map & 1) ? 127 : 0, (map & 8) ? 128 : (map & 4) ? 127 : 0);
+		user_io_l_analog_joystick(joystick, (map & 2) ? 128 : (map & 1) ? 127 : 0, (map & 8) ? 128 : (map & 4) ? 127 : 0);		
+	}
+	
+	if (is_groovy())
+	{
+		groovy_send_keycode(joystick, map);
 	}
 }
 
@@ -2972,7 +2992,7 @@ void user_io_poll()
 	{
 		x86_poll(0);
 	}
-	else if ((core_type == CORE_TYPE_8BIT) && !is_menu() && !is_minimig() && !is_groovy())
+	else if ((core_type == CORE_TYPE_8BIT) && !is_menu() && !is_minimig())
 	{
 		if (is_st()) tos_poll();
 		if (is_snes() || is_sgb()) snes_poll();
@@ -3064,7 +3084,7 @@ void user_io_poll()
 				else if (op & 1) c64_readGCR(disk, lba, blks-1);
 				else break;
 			}
-			else if (op == 2 && is_n64() && use_save)
+			else if ((op == 2) && is_n64() && use_save)
 			{
 				n64_save_savedata(lba, ack, buffer_lba[disk], buffer[disk], blksz, sz);
 			}
@@ -3125,6 +3145,13 @@ void user_io_poll()
 			else if (op & 1)
 			{
 				uint32_t buf_n = sizeof(buffer[0]) / blksz;
+				unsigned int psx_blksz = 0;
+				if (is_psx() && blksz == 2352)
+				{
+					//returns 0 if the mounted disk is not a chd, otherwise returns the chd hunksize in bytes
+					psx_blksz = psx_chd_hunksize();
+					if (psx_blksz && psx_blksz <= sizeof(buffer[0])) buf_n = psx_blksz / blksz;
+				}
 				//printf("SD RD (%llu,%d) on %d, WIDE=%d\n", lba, blksz, disk, fio_size);
 
 				int done = 0;
@@ -3245,7 +3272,7 @@ void user_io_poll()
 
 	static uint8_t leds = 0;
 
-	if (use_ps2ctl && !is_minimig() && !is_archie() && !is_groovy())
+	if (use_ps2ctl && !is_minimig() && !is_archie())
 	{
 		leds |= (KBD_LED_FLAG_STATUS | KBD_LED_CAPS_CONTROL);
 
@@ -3518,12 +3545,13 @@ void user_io_poll()
 	if (is_saturn()) saturn_poll();
 	if (is_psx()) psx_poll();
 	if (is_neogeo_cd()) neocd_poll();
+	if (is_n64()) n64_poll();
 	if (is_groovy()) groovy_poll();
 	process_ss(0);
 }
 
 static void send_keycode(unsigned short key, int press)
-{
+{	
 	if (is_pcxt())
 	{
 		//WIN+... we override this hotkey in the core.
@@ -3881,7 +3909,7 @@ void user_io_kbd(uint16_t key, int press)
 	static int block_F12 = 0;
 
 	if(is_menu()) spi_uio_cmd(UIO_KEYBOARD); //ping the Menu core to wakeup
-
+	
 	// Win+PrnScr or Alt/Win+ScrLk - screen shot
 	bool key_WinPrnScr = (key == KEY_SYSRQ && (get_key_mod() & (RGUI | LGUI)));
 	// Excluding scroll lock for PS/2 so Win+ScrLk can be used to change the emu mode.

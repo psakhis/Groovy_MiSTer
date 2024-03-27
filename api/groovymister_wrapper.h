@@ -49,6 +49,20 @@ extern "C" {
 #define LIBGMC "libgroovymister.dll"
 #endif
 
+/* joystick map */
+#define GMW_JOY_RIGHT (1 << 0)
+#define GMW_JOY_LEFT  (1 << 1)
+#define GMW_JOY_DOWN  (1 << 2)
+#define GMW_JOY_UP    (1 << 3)
+#define GMW_JOY_B1    (1 << 4)
+#define GMW_JOY_B2    (1 << 5)
+#define GMW_JOY_B3    (1 << 6)
+#define GMW_JOY_B4    (1 << 7)
+#define GMW_JOY_B5    (1 << 8)
+#define GMW_JOY_B6    (1 << 9)
+#define GMW_JOY_B7    (1 << 10)
+#define GMW_JOY_B8    (1 << 11)
+#define GMW_JOY_B9    (1 << 12)
 
 /* FPGA data received on ACK */
 typedef struct MODULE_API_GMW
@@ -65,14 +79,20 @@ typedef struct MODULE_API_GMW
  	uint8_t vgaVblank;	//1-fpga is on vblank
  	uint8_t vgaF1;		//1-field for interlaced
  	uint8_t audio;		//1-fgpa has audio activated
- 	uint8_t vramQueue; 	//1-fpga has pixels prepared on vram
- 	
+ 	uint8_t vramQueue; 	//1-fpga has pixels prepared on vram 	 	
 } gmw_fpgaStatus;
+
+typedef struct MODULE_API_GMW{
+	uint32_t joyFrame;	//joystick blit frame
+ 	uint8_t  joyOrder;	//joystick blit order
+ 	uint16_t joy1;	 	//joystick 1 map
+ 	uint16_t joy2;	 	//joystick 2 map
+} gmw_fpgaInputs;
 
 /* Declaration of the wrapper functions */
 
 // Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888)
-MODULE_API_GMW void gmw_init(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
+MODULE_API_GMW void gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
 // Close stream
 MODULE_API_GMW void gmw_close(void);
 // Change resolution (check https://github.com/antonioginer/switchres) for modeline generation (interlace=2 for progressive framebuffer)
@@ -89,8 +109,15 @@ MODULE_API_GMW void gmw_audio(uint16_t soundSize);
 MODULE_API_GMW void gmw_waitSync(void);
 // getACK is used internal on WaitSync, dwMilliseconds = 0 will time out immediately if no new data
 MODULE_API_GMW uint32_t gmw_getACK(uint8_t dwMilliseconds); 
-// refresh fpga status from last ACK received
-MODULE_API_GMW void gmw_refreshStatus(gmw_fpgaStatus* status);
+// get fpga status from last ACK received
+MODULE_API_GMW void gmw_getStatus(gmw_fpgaStatus* status);
+// listen inputs from MiSTer
+MODULE_API_GMW void gmw_bindInputs(void);
+// refresh inputs
+MODULE_API_GMW void gmw_pollInputs(void);
+// get inputs
+MODULE_API_GMW void gmw_getInputs(gmw_fpgaInputs* inputs);
+
 // get version
 MODULE_API_GMW const char* gmw_get_version();
 // Verbose level 0,1,2 (min to max)
@@ -100,7 +127,7 @@ MODULE_API_GMW void gmw_set_log_level(int level);
 /* Inspired by https://stackoverflow.com/a/1067684 */
 typedef struct MODULE_API_GMW
 {
-	void (*init)(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);	
+	void (*init)(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);	
 	void (*close)(void);
 	void (*switchres)(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
 	char*(*get_pBufferBlit)(void);
@@ -109,7 +136,10 @@ typedef struct MODULE_API_GMW
 	void (*audio)(uint16_t soundSize);
 	void (*waitSync)(void);
 	uint32_t (*getACK)(uint8_t dwMilliseconds); 
-	void (*refreshStatus)(gmw_fpgaStatus* status);
+	void (*getStatus)(gmw_fpgaStatus* status);
+	void (*bindInputs)(void);
+	void (*pollInputs)(void);
+	void (*getInputs)(gmw_fpgaInputs* inputs);
 	const char* (*get_version)(void);        
 	void (*set_log_level) (int level);
 } gmwAPI;

@@ -1,3 +1,5 @@
+#include "../mednafen.h"
+#include "../mednafen-driver.h"
 #include "groovymister.h"
 
 #include <stdint.h>
@@ -71,6 +73,11 @@ GroovyMister::GroovyMister()
  	fpga.vgaF1 = 0;
  	fpga.audio = 0;
  	fpga.vramQueue = 0;
+ 	 	
+ 	inputs.joyFrame = 0;
+ 	inputs.joyOrder = 0;
+ 	inputs.joy1 = 0;
+ 	inputs.joy2 = 0;
  	
  	m_RGBSize = 0;
  	m_interlace = 0;
@@ -109,9 +116,11 @@ if (USE_RIO)
    m_rio.RIODeregisterBuffer(m_sendRioBufferAudioId);
 }   
    ::closesocket(m_sockFD);
+   ::closesocket(m_sockInputsFD);
    ::WSACleanup();
 #else
    close(m_sockFD);
+   close(m_sockInputsFD);
 #endif  		
 }
 
@@ -188,14 +197,14 @@ if (USE_RIO)
     	m_sendRioBuffer.Offset = 0;
     	m_sendRioBuffer.Length = 26;
         
-        m_receiveRioBufferId = m_rio.RIORegisterBuffer(m_bufferReceive, 13);
+        m_receiveRioBufferId = m_rio.RIORegisterBuffer(m_bufferReceive, 17);
     	if (m_receiveRioBufferId == RIO_INVALID_BUFFERID)
     	{
         	LOG(0,"[MiSTer] RIORegisterBuffer m_BufferReceive Error: %lu\n", ::GetLastError());        		
     	}        		
     	m_receiveRioBuffer.BufferId = m_receiveRioBufferId;
     	m_receiveRioBuffer.Offset = 0;
-    	m_receiveRioBuffer.Length = 13;
+    	m_receiveRioBuffer.Length = 17;
     	
     	if (lz4Frames)
     	{    		
@@ -440,13 +449,6 @@ void GroovyMister::CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
         setTimeEnd();
         m_streamTime = DiffTime();
         //printf("[DEBUG] Stream time %lu\n",m_streamTime);
-
-#ifdef _WIN32  
-if (USE_RIO)
-{ 	  	 	  	
-        m_rio.RIOReceive(m_requestQueue, &m_receiveRioBuffer, 1, 0, &m_receiveRioBuffer);  
-}        
-#endif 	        	
 }
 
 void GroovyMister::CmdAudio(uint16_t soundSize)
@@ -488,7 +490,7 @@ if (USE_RIO)
         		idx=0;
         		do
         		{
-	        		if (results[idx].BytesTransferred == sizeof(m_bufferReceive))
+	        		if (results[idx].BytesTransferred == 13) //blit ACK
 	        		{       
 	        			if (dwMilliseconds > 0)
 					{
@@ -510,7 +512,8 @@ if (USE_RIO)
         		} while (idx <= numResults);	     		     		        				        		        		      		
         		numResults = m_rio.RIODequeueCompletion(m_receiveQueue, results, numResults); 
         	}
-    	}    
+        	m_rio.RIOReceive(m_requestQueue, &m_receiveRioBuffer, 1, 0, &m_receiveRioBuffer);	
+    	}        	
     	m_rio.RIONotify(m_receiveQueue);  
     	return getACKresult;
 }    	
@@ -527,7 +530,7 @@ if (USE_RIO)
 			setTimeEnd();
         		diff = DiffTime();
 		}
-  		if (len == sizeof(m_bufferReceive)) 
+  		if (len == 13) //blit ACK
   		{  	  			
 			getACKresult = diff;															  			 
         		memcpy(&frameUDP, &m_bufferReceive[0], 4);					
@@ -535,8 +538,7 @@ if (USE_RIO)
 			{		   
         			setFpgaStatus();
         		}	
-  		}  	
-  			
+  		}	  			
         } while ((len > 0) || (!getACKresult && dwNanoseconds > diff)); 		  	          
     	return getACKresult;
 }
@@ -568,6 +570,94 @@ void GroovyMister::WaitSync()
         	LOG(1,"[MiSTer] Frame %d Sleep prev=%d/final=%d/real=%d (frameTime=%d blitTime=%d emulationTime=%d) (vcount_vsync=%d/%d vcount_gpu=%d/%d)\n", m_frame, prevSleepTime, sleepTime, realTime, m_frameTime, m_streamTime, m_emulationTime, fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount);	      
 	}     		
 }
+
+
+
+void GroovyMister::BindInputs(void)
+{   		
+	// Set server          	 	                      
+	m_serverAddrInputs.sin_family = AF_INET;		
+	m_serverAddrInputs.sin_port = htons(32101);
+	m_serverAddrInputs.sin_addr.s_addr = htonl(INADDR_ANY);		
+	// Set socket   
+#ifdef _WIN32              
+   	WSADATA wsd;                                           
+   	uint16_t rc;      		      
+   	rc = ::WSAStartup(MAKEWORD(2, 2), &wsd);
+   	if (rc != 0) 
+   	{
+		LOG(0, "[MiSTer][Inputs] Unable to load Winsock: %d\n", rc);       
+  	}              	
+   	m_sockInputsFD = INVALID_SOCKET;  
+	LOG(0, "[MiSTer][Inputs] Initialising socket %s...\n","");                
+   	m_sockInputsFD = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);          
+   	if (m_sockInputsFD == INVALID_SOCKET)
+   	{
+  		LOG(0,"[MiSTer][Inputs] Could not create socket : %lu", ::GetLastError());        
+   	}    	   		                     	   		   		
+	LOG(0,"[MiSTer][Inputs] Setting socket async %s...\n",""); 
+  	u_long iMode=1;
+   	rc = ioctlsocket(m_sockInputsFD, FIONBIO, &iMode); 
+   	if (rc < 0)
+   	{
+   		LOG(0,"[MiSTer][Inputs] set nonblock fail %d\n", rc);
+   	}      	
+   	LOG(0,"[MiSTer][Inputs] Binding port %s...\n",""); 
+   	rc = ::bind(m_sockInputsFD, (struct sockaddr *)&m_serverAddrInputs, sizeof(m_serverAddrInputs));
+   	if (rc < 0)
+    	{
+    		LOG(0,"[MiSTer][Inputs] bind fail %d\n", rc);       	
+    	}     	  						
+    		   
+#else	               
+  	printf("[MiSTer][Inputs] Initialising socket...\n");  
+  	m_sockInputsFD = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);				
+  	if (m_sockInputsFD < 0)
+  	{
+  		LOG(0,"[MiSTer][Inputs] Could not create socket : %d", sockfd);      		     		
+  	}              
+	LOG(0,"[MiSTer][Input] Setting socket async %s...\n",""); 
+  	// Non blocking socket                                                                                                     
+  	int flags;
+  	flags = fcntl(m_sockInputsFD, F_GETFD, 0);    	
+  	if (flags < 0) 
+  	{
+  		LOG(0,"[MiSTer][Inputs] get falg error %d\n", flags);  		     		
+  	}
+  	flags |= O_NONBLOCK;
+  	if (fcntl(m_sockInputsFD, F_SETFL, flags) < 0) 
+  	{
+  		LOG(0,"[MiSTer] set nonblock fail %d\n", flags);  		     		
+  	}    	   	
+  	LOG(0,"[MiSTer][Inputs] Binding port %s...\n",""); 
+   	if (bind(m_sockInputsFD, (struct sockaddr *)&m_serverAddrInputs, sizeof(m_serverAddrInputs)) < 0)
+    	{
+    		LOG(0,"[MiSTer][Inputs] bind fail %d\n", 0);       	
+    	}  	
+#endif                          
+}
+
+void GroovyMister::PollInputs(void)
+{
+	uint32_t joyFrame = inputs.joyFrame;
+	uint8_t  joyOrder = inputs.joyOrder;
+	socklen_t sServerAddr = sizeof(struct sockaddr);  	
+  	int len = 0;   	
+  	do
+  	{  	//Mednafen::MDFN_printf(_("GGGGGGGGGGGGGGGGGGGGGGGG...\n"));  	
+  		len = recvfrom(m_sockInputsFD, m_bufferInputsReceive, sizeof(m_bufferInputsReceive), 0, (struct sockaddr *)&m_serverAddrInputs, &sServerAddr);    		  				
+  		if (len == 9) //blit joystick
+		{
+			memcpy(&joyFrame, &m_bufferInputsReceive[0], 4);
+			memcpy(&joyOrder, &m_bufferInputsReceive[4], 1);	        			
+			if (joyFrame > inputs.joyFrame || (joyFrame == inputs.joyFrame && joyOrder > inputs.joyOrder))
+			{
+				setFpgaJoystick();
+			}
+		}  	  			
+        } while (len > 0); 	  	          
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 
 // PRIVATE
@@ -744,7 +834,17 @@ void GroovyMister::setFpgaStatus(void)
 	fpga.audio         = bits.u.bit6;
  	fpga.vramQueue     = bits.u.bit7;
  	
- 	LOG(2,"[MiSTer] ACK %d %d / %d %d / bits(%d%d%d%d%d%d%d%d)\n", fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount, fpga.vramReady, fpga.vramEndFrame, fpga.vramSynced, fpga.vgaFrameskip, fpga.vgaVblank, fpga.vgaF1, fpga.audio, fpga.vramQueue);
+ 	LOG(2,"[MiSTer] ACK %d %d / %d %d / bits(%d%d%d%d%d%d%d%d)\n", fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount, fpga.vramReady, fpga.vramEndFrame, fpga.vramSynced, fpga.vgaFrameskip, fpga.vgaVblank, fpga.vgaF1, fpga.audio, fpga.vramQueue); 	 	
+}
+
+void GroovyMister::setFpgaJoystick(void)
+{		
+	memcpy(&inputs.joyFrame, &m_bufferInputsReceive[0], 4);
+	memcpy(&inputs.joyOrder, &m_bufferInputsReceive[4], 1);
+	memcpy(&inputs.joy1, &m_bufferInputsReceive[5], 2);
+	memcpy(&inputs.joy2, &m_bufferInputsReceive[7], 2);  		  		
+				 	
+ 	LOG(2,"[MiSTer] JOY %d %d / %d %d\n", inputs.joyFrame, inputs.joyOrder, inputs.joy1, inputs.joy2);
 }
 
 int GroovyMister::DiffTimeRaster(void)

@@ -68,6 +68,7 @@
 
 // UDP server 
 #define UDP_PORT 32100
+#define UDP_PORT_INPUTS 32101
 #define CMD_CLOSE 1
 #define CMD_INIT 2
 #define CMD_SWITCHRES 3
@@ -161,7 +162,12 @@ typedef struct {
    //lz4
    uint32_t PoC_bytes_lz4_len;
    uint32_t PoC_bytes_lz4_ddr;     
-   uint8_t  PoC_field_lz4;  
+   uint8_t  PoC_field_lz4; 
+   
+   //joystick
+   uint8_t   PoC_joystick_order;  
+   uint32_t  PoC_joystick_map1;  
+   uint32_t  PoC_joystick_map2;  
                
 } PoC_type;
 
@@ -175,6 +181,7 @@ static int groovyServer = 0;
 static int sockfd;
 static struct sockaddr_in servaddr;	
 static struct sockaddr_in clientaddr;
+static struct sockaddr_in clientaddrInputs;
 static socklen_t clilen = sizeof(struct sockaddr); 
 static char recvbuf[65536] = { 0 };
 
@@ -201,6 +208,7 @@ static int isCorePriority = 0;
 static uint8_t hpsBlit = 0; 
 static uint16_t numBlit = 0;
 static uint8_t doScreensaver = 0;
+static uint8_t doInputs = 0;
 static uint8_t isConnected = 0; 
 
 /* FPGA HPS EXT STATUS */
@@ -281,8 +289,9 @@ static void groovy_FPGA_hps()
 	
     initVerboseFile();				 	
     hpsBlit = bits.u.bit2;			
-    doScreensaver = !bits.u.bit3;		
-    printf("doVerbose=%d hpsBlit=%d doScreenSaver=%d\n", doVerbose, hpsBlit, doScreensaver);	
+    doScreensaver = !bits.u.bit3;
+    doInputs = bits.u.bit4;		
+    printf("doVerbose=%d hpsBlit=%d doScreenSaver=%d doInputs=%d\n", doVerbose, hpsBlit, doScreensaver, doInputs);	
 }
 
 static void groovy_FPGA_status(uint8_t isACK)
@@ -698,7 +707,7 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 {          	
 	LOG(2, "[ACK_%s]\n", "STATUS");	
 	
-	int flags = 0;
+	int flags = 0;	
 	flags |= MSG_CONFIRM;	
 	char sendbuf[13];
 	//echo
@@ -727,7 +736,7 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 	bits.u.bit6 = fpga_audio;
 	bits.u.bit7 = (fpga_vram_queue > 0) ? 1 : 0;
 	sendbuf[12] = bits.byte;
-	
+			
 	sendto(sockfd, sendbuf, 13, flags, (struct sockaddr *)&clientaddr, clilen);																
 }
 
@@ -757,6 +766,9 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 		getnameinfo((struct sockaddr *)&clientaddr, clilen, hoststr, sizeof(hoststr), portstr, sizeof(portstr), NI_NUMERICHOST | NI_NUMERICSERV);
 		LOG(1,"[Connected %s:%s]\n", hoststr, portstr);		
 		isConnected = 1;
+		//send inputs on another port
+		memcpy(&clientaddrInputs, &clientaddr, sizeof(struct sockaddr));
+		clientaddrInputs.sin_port = htons(UDP_PORT_INPUTS);
 	}
 	
 	do
@@ -775,7 +787,8 @@ static void setBlit(uint32_t udp_frame, uint32_t udp_lz4_size)
 	poc->PoC_bytes_lz4_len = (blitCompression) ? udp_lz4_size : 0;	
 	poc->PoC_field = (!poc->PoC_FB_progressive) ? (poc->PoC_frame_recv + poc->PoC_field_frame) % 2 : 0; 
 	poc->PoC_buffer_offset = (blitCompression) ? (poc->PoC_field_lz4) ? LZ4_OFFSET_B : LZ4_OFFSET_A : (!poc->PoC_FB_progressive && poc->PoC_field) ? FIELD_OFFSET : 0;					
-	poc->PoC_field_lz4 = (blitCompression) ? !poc->PoC_field_lz4 : 0;	
+	poc->PoC_field_lz4 = (blitCompression) ? !poc->PoC_field_lz4 : 0;
+	poc->PoC_joystick_order = 0;	
 	
 	isBlitting = 1;	
 	isCorePriority = 1;
@@ -1193,6 +1206,41 @@ void groovy_poll()
    	   	    	
    	              
 } 
+
+void groovy_send_keycode(unsigned char joystick, uint32_t map)
+{			
+	poc->PoC_joystick_order++;
+	if (joystick == 0)
+	{
+		poc->PoC_joystick_map1 = map;
+	}
+	if (joystick == 1)
+	{
+		poc->PoC_joystick_map2 = map;
+	}
+		
+	if (isConnected && doInputs)
+	{		
+		char sendbuf[9];
+				
+		sendbuf[0] = poc->PoC_frame_ddr & 0xff;
+		sendbuf[1] = poc->PoC_frame_ddr >> 8;	
+		sendbuf[2] = poc->PoC_frame_ddr >> 16;	
+		sendbuf[3] = poc->PoC_frame_ddr >> 24;	
+		sendbuf[4] = poc->PoC_joystick_order;
+		sendbuf[5] = poc->PoC_joystick_map1 & 0xff;
+		sendbuf[6] = poc->PoC_joystick_map1 >> 8;
+		sendbuf[7] = poc->PoC_joystick_map2 & 0xff;
+		sendbuf[8] = poc->PoC_joystick_map2 >> 8;				
+		
+		sendto(sockfd, sendbuf, 9, 0, (struct sockaddr *)&clientaddrInputs, clilen);	
+		LOG(2, "[JOY_ACK][%d][map=%d]\n", joystick, map);	
+	} 
+	else
+	{
+		LOG(2, "[JOY][%d][map=%d]\n", joystick, map);	
+	}
+}
 
 
 

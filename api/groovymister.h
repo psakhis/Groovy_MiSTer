@@ -18,6 +18,21 @@
 #define BUFFER_SLICES 846
 #define BUFFER_MTU 1472
 
+//joystick map
+#define GM_JOY_RIGHT (1 << 0)
+#define GM_JOY_LEFT  (1 << 1)
+#define GM_JOY_DOWN  (1 << 2)
+#define GM_JOY_UP    (1 << 3)
+#define GM_JOY_B1    (1 << 4)
+#define GM_JOY_B2    (1 << 5)
+#define GM_JOY_B3    (1 << 6)
+#define GM_JOY_B4    (1 << 7)
+#define GM_JOY_B5    (1 << 8)
+#define GM_JOY_B6    (1 << 9)
+#define GM_JOY_B7    (1 << 10)
+#define GM_JOY_B8    (1 << 11)
+#define GM_JOY_B9    (1 << 12)
+
 /*! fpgaStatus :
  *  Data received after CmdInit and CmdBlit calls
  */
@@ -34,8 +49,15 @@ typedef struct fpgaStatus{
  	uint8_t vgaVblank;	//1-fpga is on vblank
  	uint8_t vgaF1;		//1-field for interlaced
  	uint8_t audio;		//1-fgpa has audio activated
- 	uint8_t vramQueue; 	//1-fpga has pixels prepared on vram
+ 	uint8_t vramQueue; 	//1-fpga has pixels prepared on vram 	 	
 } fpgaStatus;
+
+typedef struct fpgaInputs{
+	uint32_t joyFrame;	//joystick blit frame
+ 	uint8_t  joyOrder;	//joystick blit order
+ 	uint16_t joy1;	 	//joystick 1 map
+ 	uint16_t joy2;	 	//joystick 2 map
+} fpgaInputs;
 
 typedef unsigned long DWORD;
 
@@ -46,6 +68,7 @@ class GroovyMister
  	char *pBufferBlit; 	// This buffer are registered and aligned for sending rgb. Populate it before CmdBlit  	 	
  	char *pBufferAudio; 	// This buffer are registered and aligned for sending audio. Populate it before CmdAudio  	 	
  	fpgaStatus fpga;	// Data with last received ACK
+ 	fpgaInputs inputs;      // Data with last inputs received
  	
 	GroovyMister();
 	~GroovyMister();
@@ -64,6 +87,9 @@ class GroovyMister
 	uint32_t getACK(DWORD dwMilliseconds); 
 	// sleep to sync with crt raster 
 	void WaitSync();
+	
+	void BindInputs(void);
+	void PollInputs(void);
 	
 	void setVerbose(uint8_t sev);
 	const char* getVersion();
@@ -89,20 +115,24 @@ class GroovyMister
 	RIO_BUFFERID m_sendRioBufferAudioId;		
 	RIO_BUF m_sendRioBufferAudio; 
 	RIO_BUF *m_pBufsAudio;
+	SOCKET m_sockInputsFD;    	 
 	
 	LARGE_INTEGER m_tickStart;
         LARGE_INTEGER m_tickEnd;
         LARGE_INTEGER m_tickSync;
 #else
         int m_sockFD;
+        int m_sockInputsFD;
         
         struct timespec m_tickStart;                     
         struct timespec m_tickEnd;     
         struct timespec m_tickSync;     
-#endif
+#endif       
         struct sockaddr_in m_serverAddr; 
+        struct sockaddr_in m_serverAddrInputs; 
         char m_bufferSend[26]; 
         char m_bufferReceive[13]; 
+        char m_bufferInputsReceive[9]; 
         char *m_pBufferLZ4;
         char *m_pBufferAudio;
         uint8_t m_lz4Frames;
@@ -124,6 +154,7 @@ class GroovyMister
 	void setTimeEnd(void);
 	uint32_t DiffTime(void);
 	void setFpgaStatus(void);
+	void setFpgaJoystick(void);
 	int DiffTimeRaster(void);
 };
 

@@ -221,9 +221,11 @@ localparam CONF_STR = {
    "P3O[29],Blit at,ASAP,End Line;",       
    "P3-;",
    "P3O[33],Screensaver,On,Off;",
+   "P3-;",
+   "P3O[38],Send inputs,Off,On;",
    "-;",
-   "J1,Red;",
-   "jn,A;",
+   "J1,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9;",        
+   "J2,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9;",        
    "V,v",`BUILD_DATE
 
 };
@@ -251,9 +253,11 @@ wire        hps_frameskip = !hps_volatile_fb;
 wire        hps_audio = status[34];
 wire [1:0]  hps_audio_buffer = status[36:35];
 wire        hps_pwm = status[37];
+wire        hps_inputs = status[38];
 
 wire [39:0] status;
-wire [31:0] joy;
+wire [31:0] joy0;
+wire [31:0] joy1;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
@@ -271,7 +275,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
  .status(status),
  .status_menumask({crop_240p, allow_crop_240p, direct_video}),
         
- .joystick_0(joy) // debug only purposes
+ .joystick_0(joy0),
+ .joystick_1(joy1)
      
 );
 
@@ -293,6 +298,7 @@ hps_ext hps_ext
         .hps_verbose(hps_verbose),
         .hps_blit(hps_blit),
         .hps_screensaver(hps_screensaver),
+        .hps_inputs(hps_inputs),
         .hps_audio(hps_audio),  
         .sound_rate(sound_rate),
         .sound_chan(sound_chan),
