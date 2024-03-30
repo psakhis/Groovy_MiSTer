@@ -112,7 +112,7 @@ MODULE_API_GMW uint32_t gmw_getACK(uint8_t dwMilliseconds);
 // get fpga status from last ACK received
 MODULE_API_GMW void gmw_getStatus(gmw_fpgaStatus* status);
 // listen inputs from MiSTer
-MODULE_API_GMW void gmw_bindInputs(void);
+MODULE_API_GMW void gmw_bindInputs(const char* misterHost);
 // refresh inputs
 MODULE_API_GMW void gmw_pollInputs(void);
 // get inputs
@@ -137,7 +137,7 @@ typedef struct MODULE_API_GMW
 	void (*waitSync)(void);
 	uint32_t (*getACK)(uint8_t dwMilliseconds); 
 	void (*getStatus)(gmw_fpgaStatus* status);
-	void (*bindInputs)(void);
+	void (*bindInputs)(const char* misterHost);
 	void (*pollInputs)(void);
 	void (*getInputs)(gmw_fpgaInputs* inputs);
 	const char* (*get_version)(void);        

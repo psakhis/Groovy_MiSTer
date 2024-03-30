@@ -181,9 +181,13 @@ static int groovyServer = 0;
 static int sockfd;
 static struct sockaddr_in servaddr;	
 static struct sockaddr_in clientaddr;
-static struct sockaddr_in clientaddrInputs;
 static socklen_t clilen = sizeof(struct sockaddr); 
 static char recvbuf[65536] = { 0 };
+static char sendbuf[13];
+
+static int sockfdInputs;
+static struct sockaddr_in servaddrInputs;
+static struct sockaddr_in clientaddrInputs;
 
 /* Logo */
 static int groovyLogo = 0;
@@ -210,6 +214,7 @@ static uint16_t numBlit = 0;
 static uint8_t doScreensaver = 0;
 static uint8_t doInputs = 0;
 static uint8_t isConnected = 0; 
+static uint8_t isConnectedInputs = 0; 
 
 /* FPGA HPS EXT STATUS */
 static uint16_t fpga_vga_vcount = 0;
@@ -708,8 +713,7 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 	LOG(2, "[ACK_%s]\n", "STATUS");	
 	
 	int flags = 0;	
-	flags |= MSG_CONFIRM;	
-	char sendbuf[13];
+	flags |= MSG_CONFIRM;		
 	//echo
 	sendbuf[0] = udp_frame & 0xff;
 	sendbuf[1] = udp_frame >> 8;	
@@ -751,6 +755,9 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 	isBlitting = 0;	
 	numBlit = 0;	
 	
+	
+	char hoststr[NI_MAXHOST];
+	char portstr[NI_MAXSERV];
 	// load LOGO
 	if (doScreensaver)
 	{
@@ -760,16 +767,22 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 	}
 	
 	if (!isConnected)
-	{				
-		char hoststr[NI_MAXHOST];
-		char portstr[NI_MAXSERV];
+	{								
 		getnameinfo((struct sockaddr *)&clientaddr, clilen, hoststr, sizeof(hoststr), portstr, sizeof(portstr), NI_NUMERICHOST | NI_NUMERICSERV);
-		LOG(1,"[Connected %s:%s]\n", hoststr, portstr);		
-		isConnected = 1;
-		//send inputs on another port
-		memcpy(&clientaddrInputs, &clientaddr, sizeof(struct sockaddr));
-		clientaddrInputs.sin_port = htons(UDP_PORT_INPUTS);
+		LOG(1,"[Connected][%s:%s]\n", hoststr, portstr);		
+		isConnected = 1;		
 	}
+	
+	if (doInputs)
+  	{
+  		int len = recvfrom(sockfdInputs, recvbuf, 1, 0, (struct sockaddr *)&clientaddrInputs, &clilen);  			
+  		if (len > 0)
+  		{  						
+			getnameinfo((struct sockaddr *)&clientaddrInputs, clilen, hoststr, sizeof(hoststr), portstr, sizeof(portstr), NI_NUMERICHOST | NI_NUMERICSERV);
+			LOG(1,"[Inputs][%s:%s]\n", hoststr, portstr);		
+  			isConnectedInputs = 1;  			
+  		}	
+  	}
 	
 	do
 	{
@@ -975,6 +988,46 @@ static void groovy_udp_server_init()
     	groovyServer = 2;   	    	    	 			
 }
 
+static void groovy_udp_server_init_inputs()
+{		
+	sockfdInputs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);				
+    	if (sockfdInputs < 0)
+    	{
+    		printf("socket error\n");       		
+    	}    	    				    	        	
+	        		    
+    	memset(&servaddrInputs, 0, sizeof(servaddrInputs));
+    	servaddrInputs.sin_family = AF_INET;
+    	servaddrInputs.sin_addr.s_addr = htonl(INADDR_ANY);
+    	servaddrInputs.sin_port = htons(UDP_PORT_INPUTS);
+    	  	
+        // Non blocking socket                                                                                                     
+    	int flags;
+    	flags = fcntl(sockfdInputs, F_GETFD, 0);    	
+    	if (flags < 0) 
+    	{
+      		printf("get falg error\n");       		
+    	}
+    	flags |= O_NONBLOCK;
+    	if (fcntl(sockfdInputs, F_SETFL, flags) < 0) 
+    	{
+       		printf("set nonblock fail\n");       		
+    	}   	    	    		     	    	        	 	    		    	    		
+                                    	
+	int beTrueAddr = 1;
+	if (setsockopt(sockfdInputs, SOL_SOCKET, SO_REUSEADDR, (void*)&beTrueAddr,sizeof(beTrueAddr)) < 0)
+	{
+        	printf("Error so_reuseaddr\n");        	
+        } 
+                            	                         	         
+    	if (bind(sockfdInputs, (struct sockaddr *)&servaddrInputs, sizeof(servaddrInputs)) < 0)
+    	{
+    		printf("bind error\n");        	
+    	}         	    	
+    	
+    	isConnectedInputs = 0;    	 	    	    	    	    	    	  	    	    	 			
+}
+
 static void groovy_start()
 {			
 	printf("Groovy-Server 0.3 starting\n");
@@ -999,7 +1052,12 @@ static void groovy_start()
 	}	
 	
     	// UDP Server     	
-	groovy_udp_server_init();   	  	  		    	    	    	           	    	    	    	    	    	        	    	
+	groovy_udp_server_init();  
+	
+	if (doInputs)
+	{
+		groovy_udp_server_init_inputs();  
+	} 	  	  		    	    	    	           	    	    	    	    	    	        	    	
 	    	
     	printf("Groovy-Server 0.3 started\n");    			    	                          		
 }
@@ -1009,10 +1067,10 @@ void groovy_poll()
 	if (!groovyServer)
 	{
 		groovy_start();
-	}	    	                                                                          	                                               					   											
+	}		    	                                                                          	                                               					   											
   				
 	int len = 0; 					
-	char* recvbufPtr;
+	char* recvbufPtr;			
 	
 	do
 	{												
@@ -1219,10 +1277,10 @@ void groovy_send_keycode(unsigned char joystick, uint32_t map)
 		poc->PoC_joystick_map2 = map;
 	}
 		
-	if (isConnected && doInputs)
+	if (isConnectedInputs)
 	{		
-		char sendbuf[9];
-				
+		int flags = 0;	
+		flags |= MSG_CONFIRM;							
 		sendbuf[0] = poc->PoC_frame_ddr & 0xff;
 		sendbuf[1] = poc->PoC_frame_ddr >> 8;	
 		sendbuf[2] = poc->PoC_frame_ddr >> 16;	
@@ -1233,7 +1291,7 @@ void groovy_send_keycode(unsigned char joystick, uint32_t map)
 		sendbuf[7] = poc->PoC_joystick_map2 & 0xff;
 		sendbuf[8] = poc->PoC_joystick_map2 >> 8;				
 		
-		sendto(sockfd, sendbuf, 9, 0, (struct sockaddr *)&clientaddrInputs, clilen);	
+		sendto(sockfdInputs, sendbuf, 9, flags, (struct sockaddr *)&clientaddrInputs, clilen);	
 		LOG(2, "[JOY_ACK][%d][map=%d]\n", joystick, map);	
 	} 
 	else

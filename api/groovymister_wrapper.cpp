@@ -151,13 +151,13 @@ MODULE_API_GMW void gmw_getStatus(gmw_fpgaStatus* status)
 	 }	 	 	
 }
 
-MODULE_API_GMW void gmw_bindInputs(void)
+MODULE_API_GMW void gmw_bindInputs(const char* misterHost)
 {	
 	if (gmw == NULL)
 	{
 		gmw = new GroovyMister();
 	}
-	gmw->BindInputs();
+	gmw->BindInputs(misterHost, 32101);
 }
 
 MODULE_API_GMW void gmw_pollInputs(void)

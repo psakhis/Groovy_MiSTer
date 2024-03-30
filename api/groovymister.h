@@ -88,7 +88,7 @@ class GroovyMister
 	// sleep to sync with crt raster 
 	void WaitSync();
 	
-	void BindInputs(void);
+	void BindInputs(const char* misterHost, uint16_t misterPort);
 	void PollInputs(void);
 	
 	void setVerbose(uint8_t sev);
@@ -115,7 +115,7 @@ class GroovyMister
 	RIO_BUFFERID m_sendRioBufferAudioId;		
 	RIO_BUF m_sendRioBufferAudio; 
 	RIO_BUF *m_pBufsAudio;
-	SOCKET m_sockInputsFD;    	 
+	SOCKET m_sockInputsFD;    	 	
 	
 	LARGE_INTEGER m_tickStart;
         LARGE_INTEGER m_tickEnd;
@@ -129,7 +129,7 @@ class GroovyMister
         struct timespec m_tickSync;     
 #endif       
         struct sockaddr_in m_serverAddr; 
-        struct sockaddr_in m_serverAddrInputs; 
+        struct sockaddr_in m_serverAddrInputs;         
         char m_bufferSend[26]; 
         char m_bufferReceive[13]; 
         char m_bufferInputsReceive[9]; 

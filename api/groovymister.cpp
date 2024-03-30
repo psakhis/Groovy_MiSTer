@@ -573,12 +573,12 @@ void GroovyMister::WaitSync()
 
 
 
-void GroovyMister::BindInputs(void)
-{   		
-	// Set server          	 	                      
+void GroovyMister::BindInputs(const char* misterHost, uint16_t misterPort)
+{   				
+	// Set server  	      	 	                      
 	m_serverAddrInputs.sin_family = AF_INET;		
-	m_serverAddrInputs.sin_port = htons(32101);
-	m_serverAddrInputs.sin_addr.s_addr = htonl(INADDR_ANY);		
+	m_serverAddrInputs.sin_port = htons(misterPort);				
+	m_serverAddrInputs.sin_addr.s_addr = inet_addr(misterHost);				
 	// Set socket   
 #ifdef _WIN32              
    	WSADATA wsd;                                           
@@ -602,12 +602,8 @@ void GroovyMister::BindInputs(void)
    	{
    		LOG(0,"[MiSTer][Inputs] set nonblock fail %d\n", rc);
    	}      	
-   	LOG(0,"[MiSTer][Inputs] Binding port %s...\n",""); 
-   	rc = ::bind(m_sockInputsFD, (struct sockaddr *)&m_serverAddrInputs, sizeof(m_serverAddrInputs));
-   	if (rc < 0)
-    	{
-    		LOG(0,"[MiSTer][Inputs] bind fail %d\n", rc);       	
-    	}     	  						
+   	LOG(0,"[MiSTer][Inputs] Binding port %s...\n","");    	   	
+    	sendto(m_sockInputsFD, m_bufferSend, 1, 0, (struct sockaddr *)&m_serverAddrInputs, sizeof(m_serverAddrInputs));  						
     		   
 #else	               
   	printf("[MiSTer][Inputs] Initialising socket...\n");  
@@ -630,10 +626,7 @@ void GroovyMister::BindInputs(void)
   		LOG(0,"[MiSTer] set nonblock fail %d\n", flags);  		     		
   	}    	   	
   	LOG(0,"[MiSTer][Inputs] Binding port %s...\n",""); 
-   	if (bind(m_sockInputsFD, (struct sockaddr *)&m_serverAddrInputs, sizeof(m_serverAddrInputs)) < 0)
-    	{
-    		LOG(0,"[MiSTer][Inputs] bind fail %d\n", 0);       	
-    	}  	
+  	sendto(m_sockInputsFD, m_bufferSend, 1, 0, (struct sockaddr *)&m_serverAddrInputs, sizeof(m_serverAddrInputs));   	
 #endif                          
 }
 
@@ -641,13 +634,13 @@ void GroovyMister::PollInputs(void)
 {
 	uint32_t joyFrame = inputs.joyFrame;
 	uint8_t  joyOrder = inputs.joyOrder;
-	socklen_t sServerAddr = sizeof(struct sockaddr);  	
+	socklen_t sServerAddr = sizeof(struct sockaddr);  					
   	int len = 0;   	
   	do
   	{  	//Mednafen::MDFN_printf(_("GGGGGGGGGGGGGGGGGGGGGGGG...\n"));  	
-  		len = recvfrom(m_sockInputsFD, m_bufferInputsReceive, sizeof(m_bufferInputsReceive), 0, (struct sockaddr *)&m_serverAddrInputs, &sServerAddr);    		  				
+  		len = recvfrom(m_sockInputsFD, m_bufferInputsReceive, sizeof(m_bufferInputsReceive), 0, (struct sockaddr *)&m_serverAddrInputs, &sServerAddr);                 		   		  		           
   		if (len == 9) //blit joystick
-		{
+		{       
 			memcpy(&joyFrame, &m_bufferInputsReceive[0], 4);
 			memcpy(&joyOrder, &m_bufferInputsReceive[4], 1);	        			
 			if (joyFrame > inputs.joyFrame || (joyFrame == inputs.joyFrame && joyOrder > inputs.joyOrder))
