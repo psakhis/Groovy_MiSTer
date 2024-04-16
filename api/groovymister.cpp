@@ -1,5 +1,3 @@
-#include "../mednafen.h"
-#include "../mednafen-driver.h"
 #include "groovymister.h"
 
 #include <stdint.h>
