@@ -4,7 +4,8 @@ using std::cout;
 using std::endl;
 
 //mingw missing headers
-#if defined(_WIN32) && !defined(WSA_FLAG_REGISTERED_IO)
+//#if defined(_WIN32) && !defined(WSA_FLAG_REGISTERED_IO)
+#if defined(_WIN32) 
 #define WSA_FLAG_REGISTERED_IO 0x100
 #define SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER _WSAIORW(IOC_WS2, 36)
 #define WSAID_MULTIPLE_RIO {0x8509e081, 0x96dd, 0x4005, { 0xb1, 0x65, 0x9e, 0x2e, 0xe8, 0xc7, 0x9e, 0x3f } }

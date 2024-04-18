@@ -172,7 +172,7 @@ if (USE_RIO)
 	LOG(0,"[MiSTer] Setting WSAIoctl %s...\n","");	    
 	GUID functionTableId = WSAID_MULTIPLE_RIO;
 	DWORD dwBytes = 0;
-	if ( NULL != WSAIoctl(m_sockFD, SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER, &functionTableId, sizeof(GUID), (void**)&m_rio, sizeof(m_rio), &dwBytes, NULL, NULL) )
+	if ( 0 != WSAIoctl(m_sockFD, SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER, &functionTableId, sizeof(GUID), (void**)&m_rio, sizeof(m_rio), &dwBytes, NULL, NULL) )
 	{
 		LOG(0,"[MiSTer] Could not create WSAIoctl : %lu", ::GetLastError());
 	}
