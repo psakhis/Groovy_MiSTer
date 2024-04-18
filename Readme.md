@@ -23,16 +23,17 @@ https://youtu.be/H0175WJFpUs
 To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
 ## Test build features (experimental)
-- (20240302) New native LZ4 blitting inside FPGA (atm only mednafen is supported)
+- (20240302) New native LZ4 blitting inside FPGA (from GroovyMame 0.264, Mednafen and MiSTerCast beta)
 - (20240302) New PWM core option (implemented by https://github.com/Jokippo)
 - (20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
+- (20240401) GroovyMame and Mednafen joysticks from mister
 
 To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
   
 ## Emulators available
 
 ### GroovyMAME
- for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases/tag/gm0261sr002z
+ for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases
  ,to activate new MiSTer backend set on with (note: you can edit it on mame.ini or like arguments):
   
     -video mister 
@@ -45,9 +46,11 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
     -skip_gameinfo 
     -syncrefresh 
     -nothrottle
+    -nomister_interlaced_fb (from 0.264) 
+    -joystickprovider mister (from 0.264)
         
     *Automatic frame delay is applied with frame delay 0
-    -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay calculed)
+    -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay)
 
     *Change "uifont default" to "uifont uismall.bdf" on mame.ini for pixel perfect menu
     *autosync 0 on mame.ini for menu (60hz)
@@ -73,6 +76,9 @@ Menu isn't adapted, so start with retroach.exe -L cores/xxxx.dll file
     video_mister_enable = "true"
 
     *Automatic frame delay for best results on latency options
+
+### MiSTerCast 
+Thanks to @Shane for this great windows utility to mirror desktop. https://github.com/iequalshane/MiSTerCast
 
 ## Thanks
 @Calamity for hard testing core and implement GroovyMAME for it
