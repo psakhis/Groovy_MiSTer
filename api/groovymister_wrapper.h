@@ -63,6 +63,7 @@ extern "C" {
 #define GMW_JOY_B7    (1 << 10)
 #define GMW_JOY_B8    (1 << 11)
 #define GMW_JOY_B9    (1 << 12)
+#define GMW_JOY_B10   (1 << 13)
 
 /* FPGA data received on ACK */
 typedef struct MODULE_API_GMW
@@ -91,7 +92,7 @@ typedef struct MODULE_API_GMW{
 
 /* Declaration of the wrapper functions */
 
-// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888)
+// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565)
 MODULE_API_GMW void gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
 // Close stream
 MODULE_API_GMW void gmw_close(void);

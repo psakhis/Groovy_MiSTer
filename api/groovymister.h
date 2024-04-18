@@ -32,6 +32,7 @@
 #define GM_JOY_B7    (1 << 10)
 #define GM_JOY_B8    (1 << 11)
 #define GM_JOY_B9    (1 << 12)
+#define GM_JOY_B10   (1 << 13)
 
 /*! fpgaStatus :
  *  Data received after CmdInit and CmdBlit calls
@@ -75,7 +76,7 @@ class GroovyMister
 	
 	// Close connection
 	void CmdClose(void);	
-	// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888)
+	// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565)
 	uint8_t CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
 	// Change resolution (check https://github.com/antonioginer/switchres) with modeline
 	void CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);

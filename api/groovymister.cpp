@@ -1,5 +1,5 @@
-#include "../mednafen.h"
-#include "../mednafen-driver.h"
+//#include "../mednafen.h"
+//#include "../mednafen-driver.h"
 #include "groovymister.h"
 
 #include <stdint.h>
@@ -374,7 +374,7 @@ void GroovyMister::CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin
 {	
 	uint8_t interlace_modeline = (interlace != 2) ? interlace : 1;
 	
-	m_RGBSize = (m_rgbMode) ? (hActive * vActive) << 2 : hActive * vActive * 3;
+	m_RGBSize = (m_rgbMode == 1) ? (hActive * vActive) << 2 : (m_rgbMode == 2) ? (hActive * vActive) << 1 : hActive * vActive * 3;
         
         if (interlace == 1)
         {

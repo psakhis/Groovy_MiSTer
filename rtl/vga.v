@@ -22,8 +22,8 @@ module vga (
    input [7:0]  VS,   // width of vsync
    input [7:0]  VBP,  // unused time after vsync
    input        interlaced,  
-   input        FB_interlaced,
- 
+   input        FB_interlaced, 
+     
    input  vram_active,
    input  vram_reset,              
    
@@ -41,6 +41,11 @@ module vga (
    input [7:0] r_vram_in3,
    input [7:0] g_vram_in3,
    input [7:0] b_vram_in3,
+
+   input       vram_wren4,
+   input [7:0] r_vram_in4,
+   input [7:0] g_vram_in4,
+   input [7:0] b_vram_in4,
      
    input [7:0] r_in,
    input [7:0] g_in,
@@ -129,21 +134,21 @@ reg       vram_out_sync      = 1'b0;   // signal to detect when pixel isn't get 
 reg       vram_start         = 1'b0;   // start using vram
 reg       vga_started        = 1'b0;   // start vblanks counter
 
-assign    vram_ready     = fifo_rgb_queue[0] + fifo_rgb_queue[1] + fifo_rgb_queue[2] < VRAM_SIZE - MAX_BURST;  // vram it's ready to write ddr burst pixels
+assign    vram_ready     = fifo_rgb_queue[0] + fifo_rgb_queue[1] + fifo_rgb_queue[2] + fifo_rgb_queue[3] + fifo_rgb_queue[4] + fifo_rgb_queue[5] < VRAM_SIZE - MAX_BURST;                        // vram it's ready to write ddr burst pixels
 assign    vram_end_frame = vram_pixel_counter >= vga_pixels_frame;                    // vram with all frame
 assign    vram_pixels    = vram_pixel_counter;                                        // number of current pixels writed on vram for a frame
 assign    vram_synced    = !vram_out_sync;                                            // from point of view vram, synced frame 
-assign    vram_queue     = fifo_rgb_queue[0] + fifo_rgb_queue[1] + fifo_rgb_queue[2]; // pixels prepared to read
+assign    vram_queue     = fifo_rgb_queue[0] + fifo_rgb_queue[1] + fifo_rgb_queue[2] + fifo_rgb_queue[3] + fifo_rgb_queue[4] + fifo_rgb_queue[5]; // pixels prepared to read
 assign    vga_pixels     = vga_pixels_frame;                                          // pixels to get all frame
 
 ///////////////////////// FIFO VRAM ////////////////////////////////////////////
-reg[7:0] fifo_rgb_r_in[3], fifo_rgb_g_in[3], fifo_rgb_b_in[3];
-wire[7:0] fifo_rgb_r[3], fifo_rgb_g[3], fifo_rgb_b[3];
-reg fifo_rgb_req[3], fifo_rgb_write[3];
-wire fifo_rgb_empty[3], fifo_rgb_full[3];
-wire[15:0] fifo_rgb_queue[3];
+reg[7:0] fifo_rgb_r_in[6], fifo_rgb_g_in[6], fifo_rgb_b_in[6];
+wire[7:0] fifo_rgb_r[6], fifo_rgb_g[6], fifo_rgb_b[6];
+reg fifo_rgb_req[6], fifo_rgb_write[6];
+wire fifo_rgb_empty[6], fifo_rgb_full[6];
+wire[14:0] fifo_rgb_queue[6];
 
-reg[1:0] fifo_rd = 2'd0, fifo_rd_next = 2'd1, fifo_wr1 = 2'd0, fifo_wr2 = 2'd1, fifo_wr3 = 2'd2;
+reg[2:0] fifo_rd = 3'd0, fifo_rd_next = 3'd1, fifo_wr1 = 3'd0, fifo_wr2 = 3'd1, fifo_wr3 = 3'd2, fifo_wr4 = 3'd3;
 reg fifo_ahead = 1'b0;
 
 fifo_vga fifo_r0(
@@ -263,19 +268,191 @@ fifo_vga fifo_b2(
    .wrusedw()
 );
 
+fifo_vga fifo_r3(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_r_in[3]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[3]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[3]),
+   .q(fifo_rgb_r[3]),
+   .rdempty(fifo_rgb_empty[3]),
+   .wrfull(fifo_rgb_full[3]),
+   .wrusedw(fifo_rgb_queue[3])
+);
+
+fifo_vga fifo_g3(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_g_in[3]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[3]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[3]),
+   .q(fifo_rgb_g[3]),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
+);
+
+fifo_vga fifo_b3(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_b_in[3]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[3]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[3]),
+   .q(fifo_rgb_b[3]),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
+);
+
+fifo_vga fifo_r4(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_r_in[4]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[4]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[4]),
+   .q(fifo_rgb_r[4]),
+   .rdempty(fifo_rgb_empty[4]),
+   .wrfull(fifo_rgb_full[4]),
+   .wrusedw(fifo_rgb_queue[4])
+);
+
+fifo_vga fifo_g4(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_g_in[4]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[4]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[4]),
+   .q(fifo_rgb_g[4]),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
+);
+
+fifo_vga fifo_b4(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_b_in[4]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[4]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[4]),
+   .q(fifo_rgb_b[4]),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
+);
+
+fifo_vga fifo_r5(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_r_in[5]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[5]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[5]),
+   .q(fifo_rgb_r[5]),
+   .rdempty(fifo_rgb_empty[5]),
+   .wrfull(fifo_rgb_full[5]),
+   .wrusedw(fifo_rgb_queue[5])
+);
+
+fifo_vga fifo_g5(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_g_in[5]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[5]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[5]),
+   .q(fifo_rgb_g[5]),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
+);
+
+fifo_vga fifo_b5(
+   .aclr(vram_reset | vga_reset),    
+   .data(fifo_rgb_b_in[5]),
+   .rdclk(clk_sys),
+   .rdreq(fifo_rgb_req[5]),
+   .wrclk(clk_sys),
+   .wrreq(fifo_rgb_write[5]),
+   .q(fifo_rgb_b[5]),
+   .rdempty(),
+   .wrfull(),
+   .wrusedw()
+);
+
+task fifo_move_1;
+  begin   
+   fifo_wr1 <= fifo_wr1 == 5 ? 3'd0 : fifo_wr1 + 1'b1;      
+   fifo_wr2 <= fifo_wr2 == 5 ? 3'd0 : fifo_wr2 + 1'b1; 
+   fifo_wr3 <= fifo_wr3 == 5 ? 3'd0 : fifo_wr3 + 1'b1;         
+   fifo_wr4 <= fifo_wr4 == 5 ? 3'd0 : fifo_wr4 + 1'b1;               
+  end
+endtask
+
+task fifo_move_2;
+  begin    
+   fifo_wr1 <= fifo_wr1 == 5 ? 3'd1 : fifo_wr1 == 4 ? 3'd0 : fifo_wr1 + 3'd2;      
+   fifo_wr2 <= fifo_wr2 == 5 ? 3'd1 : fifo_wr2 == 4 ? 3'd0 : fifo_wr2 + 3'd2; 
+   fifo_wr3 <= fifo_wr3 == 5 ? 3'd1 : fifo_wr3 == 4 ? 3'd0 : fifo_wr3 + 3'd2;         
+   fifo_wr4 <= fifo_wr4 == 5 ? 3'd1 : fifo_wr4 == 4 ? 3'd0 : fifo_wr4 + 3'd2;              
+  end
+endtask
+
+task fifo_move_3;
+  begin    
+   fifo_wr1 <= fifo_wr1 == 5 ? 3'd2 : fifo_wr1 == 4 ? 3'd1 : fifo_wr1 == 3 ? 3'd0 : fifo_wr1 + 3'd3;      
+   fifo_wr2 <= fifo_wr2 == 5 ? 3'd2 : fifo_wr2 == 4 ? 3'd1 : fifo_wr2 == 3 ? 3'd0 : fifo_wr2 + 3'd3; 
+   fifo_wr3 <= fifo_wr3 == 5 ? 3'd2 : fifo_wr3 == 4 ? 3'd1 : fifo_wr3 == 3 ? 3'd0 : fifo_wr3 + 3'd3;         
+   fifo_wr4 <= fifo_wr4 == 5 ? 3'd2 : fifo_wr4 == 4 ? 3'd1 : fifo_wr4 == 3 ? 3'd0 : fifo_wr4 + 3'd3;             
+  end
+endtask
+
+task fifo_move_4;
+  begin    
+   fifo_wr1 <= fifo_wr1 == 5 ? 3'd3 : fifo_wr1 == 4 ? 3'd2 : fifo_wr1 == 3 ? 3'd1 : fifo_wr1 == 2 ? 3'd0 : fifo_wr1 + 3'd4;      
+   fifo_wr2 <= fifo_wr2 == 5 ? 3'd3 : fifo_wr2 == 4 ? 3'd2 : fifo_wr2 == 3 ? 3'd1 : fifo_wr2 == 2 ? 3'd0 : fifo_wr2 + 3'd4; 
+   fifo_wr3 <= fifo_wr3 == 5 ? 3'd3 : fifo_wr3 == 4 ? 3'd2 : fifo_wr3 == 3 ? 3'd1 : fifo_wr3 == 2 ? 3'd0 : fifo_wr3 + 3'd4;         
+   fifo_wr4 <= fifo_wr4 == 5 ? 3'd3 : fifo_wr4 == 4 ? 3'd2 : fifo_wr4 == 3 ? 3'd1 : fifo_wr4 == 2 ? 3'd0 : fifo_wr4 + 3'd4;             
+  end
+endtask
+
+task swap_field_at_end_line;
+  input [2:0] pixels_to_write;
+  begin
+    FB_H <= FB_H > pixels_to_write ? FB_H - pixels_to_write : H - pixels_to_write + FB_H;         
+    if (FB_H <= pixels_to_write) begin //flip_flop field
+      if (vram_pixel_counter + pixels_to_write >= vga_pixels_frame) begin
+        FB_field <= FB_first;  
+        FB_first <= !FB_first;    
+      end else begin 
+        FB_field <= !FB_field; 
+      end
+    end
+  end
+endtask
+
 // write pixels on fifo
 always@(posedge clk_sys) begin                             
    		
    if (vga_reset || vram_reset) begin    
      vram_pixel_counter <= 24'd0; 
-     fifo_wr1           <= 2'd0;                                                                                                                  
-     fifo_wr2           <= 2'd1;                                                                                                                  
-     fifo_wr3           <= 2'd2;                                                                                                                  
+     fifo_wr1           <= 3'd0;                                                                                                                  
+     fifo_wr2           <= 3'd1;                                                                                                                  
+     fifo_wr3           <= 3'd2;                                                                                                                  
+     fifo_wr4           <= 3'd3;                                                                                                                                                                                                                                  
    end               
       
    fifo_rgb_write[0] <= 1'b0;  	
    fifo_rgb_write[1] <= 1'b0;  	
    fifo_rgb_write[2] <= 1'b0;  	
+   fifo_rgb_write[3] <= 1'b0;  	
+   fifo_rgb_write[4] <= 1'b0;  	
+   fifo_rgb_write[5] <= 1'b0;  	
                                
    if (vram_wren1) begin    	                        
      vram_pixel_counter         <= vram_end_frame ? 24'd1 : (vram_pixel_counter + 24'd1);      
@@ -283,9 +460,7 @@ always@(posedge clk_sys) begin
      fifo_rgb_g_in[fifo_wr1]    <= g_vram_in1;
      fifo_rgb_b_in[fifo_wr1]    <= b_vram_in1;	  
      fifo_rgb_write[fifo_wr1]   <= 1'b1;    
-     fifo_wr1                   <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
-     fifo_wr2                   <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
-     fifo_wr3                   <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1;         
+     fifo_move_1();        
    end
  		
    if (vram_wren2) begin
@@ -294,9 +469,7 @@ always@(posedge clk_sys) begin
      fifo_rgb_g_in[fifo_wr2]  <= g_vram_in2;
      fifo_rgb_b_in[fifo_wr2]  <= b_vram_in2;	  
      fifo_rgb_write[fifo_wr2] <= 1'b1;
-     fifo_wr1                 <= fifo_wr1 == 2 ? 2'd1 : fifo_wr1 == 0 ? 2'd2 : 2'd0; 
-     fifo_wr2                 <= fifo_wr2 == 2 ? 2'd1 : fifo_wr2 == 0 ? 2'd2 : 2'd0; 
-     fifo_wr3                 <= fifo_wr3 == 2 ? 2'd1 : fifo_wr3 == 0 ? 2'd2 : 2'd0;        		
+     fifo_move_2();    		
    end
 
    if (vram_wren3) begin
@@ -305,9 +478,16 @@ always@(posedge clk_sys) begin
      fifo_rgb_g_in[fifo_wr3]  <= g_vram_in3;
      fifo_rgb_b_in[fifo_wr3]  <= b_vram_in3;	  
      fifo_rgb_write[fifo_wr3] <= 1'b1;  
-     fifo_wr1                 <= fifo_wr1;     		
-     fifo_wr2                 <= fifo_wr2;     		
-     fifo_wr3                 <= fifo_wr3;     		
+     fifo_move_3();   		
+   end  
+
+   if (vram_wren4) begin
+     vram_pixel_counter       <= vram_end_frame ? 24'd4 : (vram_pixel_counter + 24'd4);
+     fifo_rgb_r_in[fifo_wr4]  <= r_vram_in4;
+     fifo_rgb_g_in[fifo_wr4]  <= g_vram_in4;
+     fifo_rgb_b_in[fifo_wr4]  <= b_vram_in4;	  
+     fifo_rgb_write[fifo_wr4] <= 1'b1;  
+     fifo_move_4();   		
    end  
 
    //frambuffer progressive vs interlaced modeline
@@ -330,16 +510,9 @@ always@(posedge clk_sys) begin
          fifo_wr1                 <= fifo_wr1;
          fifo_wr2                 <= fifo_wr2;
          fifo_wr3                 <= fifo_wr3;
+         fifo_wr4                 <= fifo_wr4;
        end
-       FB_H <= FB_H > 1 ? FB_H - 1'b1 : H;      
-       if (FB_H == 1) begin //flip_flop field
-         if (vram_pixel_counter + 1 == vga_pixels_frame) begin
-           FB_field <= FB_first;  
-           FB_first <= !FB_first;    
-         end else begin 
-           FB_field <= !FB_field; 
-         end
-       end
+       swap_field_at_end_line(1'b1);
      end
      if (vram_wren2 && !vram_wren3) begin //only 2 pixels        
        if (!FB_field) begin // cancel write
@@ -348,41 +521,31 @@ always@(posedge clk_sys) begin
          fifo_wr1                   <= fifo_wr1;
          fifo_wr2                   <= fifo_wr2;
          fifo_wr3                   <= fifo_wr3;
+         fifo_wr4                   <= fifo_wr4;
          if (FB_H == 1) begin
            fifo_rgb_write[fifo_wr1] <= 1'b1; 
            fifo_rgb_r_in[fifo_wr1]  <= r_vram_in2;
            fifo_rgb_g_in[fifo_wr1]  <= g_vram_in2;
            fifo_rgb_b_in[fifo_wr1]  <= b_vram_in2;	
-           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
-           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
-           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1; 
+           fifo_move_1(); 
          end 
        end else begin
          if (FB_H == 1) begin
            fifo_rgb_write[fifo_wr2] <= 1'b0;          
-           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
-           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
-           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1; 
+           fifo_move_1();  
          end 
        end
-       FB_H <= FB_H > 2 ? FB_H - 2'd2 : H - 2'd2 + FB_H;  
-       if (FB_H <= 2) begin //flip_flop field
-         if (vram_pixel_counter + 2 == vga_pixels_frame) begin
-           FB_field <= FB_first;  
-           FB_first <= !FB_first;                       
-         end else begin 
-           FB_field <= !FB_field; 
-         end
-       end
+       swap_field_at_end_line(3'd2);
      end
-     if (vram_wren3) begin //3 pixels  
+     if (vram_wren3 && !vram_wren4) begin //3 pixels  
        if (!FB_field) begin // cancel write
          fifo_rgb_write[fifo_wr1]   <= 1'b0;
          fifo_rgb_write[fifo_wr2]   <= 1'b0;
-         fifo_rgb_write[fifo_wr3]   <= 1'b0;
+         fifo_rgb_write[fifo_wr3]   <= 1'b0;         
          fifo_wr1                   <= fifo_wr1;
          fifo_wr2                   <= fifo_wr2;
          fifo_wr3                   <= fifo_wr3;
+         fifo_wr4                   <= fifo_wr4;
          if (FB_H == 1) begin
            fifo_rgb_write[fifo_wr1] <= 1'b1; 
            fifo_rgb_write[fifo_wr2] <= 1'b1; 
@@ -392,43 +555,89 @@ always@(posedge clk_sys) begin
            fifo_rgb_r_in[fifo_wr2]  <= r_vram_in3;
            fifo_rgb_g_in[fifo_wr2]  <= g_vram_in3;
            fifo_rgb_b_in[fifo_wr2]  <= b_vram_in3;
-           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd1 : fifo_wr1 == 0 ? 2'd2 : 2'd0; 
-           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd1 : fifo_wr2 == 0 ? 2'd2 : 2'd0; 
-           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd1 : fifo_wr3 == 0 ? 2'd2 : 2'd0; 
+           fifo_move_2();  
          end 
          if (FB_H == 2) begin
            fifo_rgb_write[fifo_wr1] <= 1'b1;          
            fifo_rgb_r_in[fifo_wr1]  <= r_vram_in3;
            fifo_rgb_g_in[fifo_wr1]  <= g_vram_in3;
            fifo_rgb_b_in[fifo_wr1]  <= b_vram_in3;	
-           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
-           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
-           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1;   
+           fifo_move_1(); 
          end
        end else begin
          if (FB_H == 1) begin
            fifo_rgb_write[fifo_wr2] <= 1'b0;          
            fifo_rgb_write[fifo_wr3] <= 1'b0;  
-           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd0 : fifo_wr1 + 1'b1;      
-           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd0 : fifo_wr2 + 1'b1; 
-           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd0 : fifo_wr3 + 1'b1;           
+           fifo_move_1(); 
          end
          if (FB_H == 2) begin           
            fifo_rgb_write[fifo_wr3] <= 1'b0;
-           fifo_wr1                 <= fifo_wr1 == 2 ? 2'd1 : fifo_wr1 == 0 ? 2'd2 : 2'd0; 
-           fifo_wr2                 <= fifo_wr2 == 2 ? 2'd1 : fifo_wr2 == 0 ? 2'd2 : 2'd0; 
-           fifo_wr3                 <= fifo_wr3 == 2 ? 2'd1 : fifo_wr3 == 0 ? 2'd2 : 2'd0;          
+           fifo_move_2(); 
          end  
        end 
-       FB_H <= FB_H > 3 ? FB_H - 2'd3 : H - 2'd3 + FB_H;
-       if (FB_H <= 3) begin //flip_flop field
-         if (vram_pixel_counter + 3 == vga_pixels_frame) begin
-           FB_field <= FB_first;  
-           FB_first <= !FB_first;              
-         end else begin 
-           FB_field <= !FB_field; 
+       swap_field_at_end_line(3'd3);    
+     end
+     if (vram_wren4) begin //4 pixels  
+       if (!FB_field) begin // cancel write
+         fifo_rgb_write[fifo_wr1]   <= 1'b0;
+         fifo_rgb_write[fifo_wr2]   <= 1'b0;
+         fifo_rgb_write[fifo_wr3]   <= 1'b0;         
+         fifo_rgb_write[fifo_wr4]   <= 1'b0;         
+         fifo_wr1                   <= fifo_wr1;
+         fifo_wr2                   <= fifo_wr2;
+         fifo_wr3                   <= fifo_wr3;
+         fifo_wr4                   <= fifo_wr4;
+         if (FB_H == 1) begin
+           fifo_rgb_write[fifo_wr1] <= 1'b1; 
+           fifo_rgb_write[fifo_wr2] <= 1'b1; 
+           fifo_rgb_write[fifo_wr3] <= 1'b1; 
+           fifo_rgb_r_in[fifo_wr1]  <= r_vram_in2;
+           fifo_rgb_g_in[fifo_wr1]  <= g_vram_in2;
+           fifo_rgb_b_in[fifo_wr1]  <= b_vram_in2;	
+           fifo_rgb_r_in[fifo_wr2]  <= r_vram_in3;
+           fifo_rgb_g_in[fifo_wr2]  <= g_vram_in3;
+           fifo_rgb_b_in[fifo_wr2]  <= b_vram_in3;
+           fifo_rgb_r_in[fifo_wr3]  <= r_vram_in4;
+           fifo_rgb_g_in[fifo_wr3]  <= g_vram_in4;
+           fifo_rgb_b_in[fifo_wr3]  <= b_vram_in4;
+           fifo_move_3();  
+         end 
+         if (FB_H == 2) begin
+           fifo_rgb_write[fifo_wr1] <= 1'b1;          
+           fifo_rgb_write[fifo_wr2] <= 1'b1;          
+           fifo_rgb_r_in[fifo_wr1]  <= r_vram_in3;
+           fifo_rgb_g_in[fifo_wr1]  <= g_vram_in3;
+           fifo_rgb_b_in[fifo_wr1]  <= b_vram_in3;	
+           fifo_rgb_r_in[fifo_wr2]  <= r_vram_in4;
+           fifo_rgb_g_in[fifo_wr2]  <= g_vram_in4;
+           fifo_rgb_b_in[fifo_wr2]  <= b_vram_in4;	
+           fifo_move_2(); 
          end
-       end         
+         if (FB_H == 3) begin
+           fifo_rgb_write[fifo_wr1] <= 1'b1;                     
+           fifo_rgb_r_in[fifo_wr1]  <= r_vram_in4;
+           fifo_rgb_g_in[fifo_wr1]  <= g_vram_in4;
+           fifo_rgb_b_in[fifo_wr1]  <= b_vram_in4;	           
+           fifo_move_1(); 
+         end
+       end else begin
+         if (FB_H == 1) begin
+           fifo_rgb_write[fifo_wr2] <= 1'b0;          
+           fifo_rgb_write[fifo_wr3] <= 1'b0;  
+           fifo_rgb_write[fifo_wr4] <= 1'b0;  
+           fifo_move_1(); 
+         end
+         if (FB_H == 2) begin           
+           fifo_rgb_write[fifo_wr3] <= 1'b0;
+           fifo_rgb_write[fifo_wr4] <= 1'b0;
+           fifo_move_2(); 
+         end  
+         if (FB_H == 3) begin                      
+           fifo_rgb_write[fifo_wr4] <= 1'b0;
+           fifo_move_3(); 
+         end  
+       end 
+       swap_field_at_end_line(3'd4);    
      end
    end
        
@@ -533,8 +742,8 @@ always@(posedge clk_sys) begin
      vram_out_sync     <= 1'b0;           
      vram_start        <= 1'b0;             
      fifo_ahead        <= 1'b0;
-     fifo_rd           <= 2'd0;
-     fifo_rd_next	     <= 2'd1;
+     fifo_rd           <= 3'd0;
+     fifo_rd_next	     <= 3'd1;
    end  
         
    if (vga_wait_vblank) vram_wait_vblank <= 1'b1;
@@ -542,6 +751,9 @@ always@(posedge clk_sys) begin
    fifo_rgb_req[0] <= 1'b0; 
    fifo_rgb_req[1] <= 1'b0; 
    fifo_rgb_req[2] <= 1'b0; 
+   fifo_rgb_req[3] <= 1'b0; 
+   fifo_rgb_req[4] <= 1'b0; 
+   fifo_rgb_req[5] <= 1'b0; 
         
    if (ce_pix) begin  
         
@@ -582,8 +794,8 @@ always@(posedge clk_sys) begin
            pixel                      <= {fifo_rgb_r[fifo_rd], fifo_rgb_g[fifo_rd], fifo_rgb_b[fifo_rd]}; 
            fifo_rgb_req[fifo_rd_next] <= fifo_rgb_empty[fifo_rd_next] ? 1'b0 : 1'b1;
            fifo_ahead                 <= fifo_rgb_empty[fifo_rd_next] ? 1'b0 : 1'b1;
-           fifo_rd_next               <= fifo_rd_next == 2 ? 2'd0 : fifo_rd_next + 1'b1;
-           fifo_rd                    <= fifo_rd == 2 ? 2'd0 : fifo_rd + 1'b1;
+           fifo_rd_next               <= fifo_rd_next == 5 ? 3'd0 : fifo_rd_next + 1'b1;
+           fifo_rd                    <= fifo_rd == 5 ? 3'd0 : fifo_rd + 1'b1;
          end		                                                                                                 
        end else begin
          pixel <= 24'h00;  //0v on blanking 		

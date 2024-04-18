@@ -31,7 +31,7 @@ module hps_ext
     input             hps_audio,
     output reg [1:0]  sound_rate = 0,
     output reg [1:0]  sound_chan = 0,
-    output reg        rgb_mode = 0,
+    output reg [1:0]  rgb_mode = 0,
     input             vga_frameskip,        
     input      [15:0] vga_vcount,   
     input      [31:0] vga_frame,    
@@ -244,7 +244,7 @@ always@(posedge clk_sys) begin
                                            begin
                                              sound_rate  <= io_din[1:0];
                                              sound_chan  <= io_din[3:2];   
-                                             rgb_mode    <= io_din[4];                                                                                                        
+                                             rgb_mode    <= io_din[5:4];                                                                                                        
                                            end                                                                                                                  
                                          endcase 
                                                 

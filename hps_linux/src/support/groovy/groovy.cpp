@@ -434,6 +434,7 @@ static void groovy_FPGA_init(uint8_t cmd, uint8_t audio_rate, uint8_t audio_chan
     bits.u.bit2 = (audio_chan == 1) ? 1 : 0;
     bits.u.bit3 = (audio_chan == 2) ? 1 : 0;
     bits.u.bit4 = (rgb_mode == 1) ? 1 : 0;			
+    bits.u.bit5 = (rgb_mode == 2) ? 1 : 0;			
     spi_w((uint16_t) bits.byte);			
     DisableIO();
 }
@@ -493,14 +494,14 @@ static void loadLogo(int logoStart)
 		groovy_FPGA_status(0);
 		if (fpga_vga_vcount == 241)
 		{								 		
-			memset(&buffer[HEADER_OFFSET], 0x00, 184320);   	         		   	         				
+			memset(&buffer[HEADER_OFFSET], 0x00, 184320);   	         		   	         								         		   	         				
 		       	int z=0;		       	
-		       	int offset = (256 * logoY * 3) + (logoX * 3); 
+		       	int offset = (256 * logoY * 3) + (logoX * 3); 		     
 		       	for (int i=0; i<64; i++)
 		       	{       				       		
 		       		memcpy(&buffer[HEADER_OFFSET+offset], (char*)&logoImage[z], 192);
 		       		offset += 256 * 3;		       		
-		       		z += 64 * 3;
+		       		z += 64 * 3;		       	
 		       	}              		       			       		                          	                       	 			         	      	                                         		       		       
 		       	logoTime = GetTimer(LOGO_TIMER);   
 		       	
@@ -532,7 +533,7 @@ static void loadLogo(int logoStart)
 
 static void groovy_FPGA_blit(uint32_t bytes, uint16_t numBlit)
 {            		
-    poc->PoC_pixels_ddr = (rgbMode) ? bytes >> 2 : bytes / 3;     
+    poc->PoC_pixels_ddr = (rgbMode == 1) ? bytes >> 2 : (rgbMode == 2) ? bytes >> 1 : bytes / 3;     
     	                       	 			         	      	                                         
     buffer[3] = (poc->PoC_pixels_ddr) & 0xff;  
     buffer[4] = (poc->PoC_pixels_ddr >> 8) & 0xff;	       	  
@@ -646,7 +647,7 @@ static void setSwitchres()
     	poc->PoC_pixels_len = poc->PoC_pixels_len >> 1;
     } 
      
-    poc->PoC_bytes_len = (rgbMode) ? poc->PoC_pixels_len << 2 : poc->PoC_pixels_len * 3;            
+    poc->PoC_bytes_len = (rgbMode == 1) ? poc->PoC_pixels_len << 2 : (rgbMode == 2) ? poc->PoC_pixels_len << 1 : poc->PoC_pixels_len * 3;            
     poc->PoC_bytes_recv = 0;          
     poc->PoC_buffer_offset = 0;
     
@@ -749,7 +750,7 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 	blitCompression = (compression <= 1) ? compression : 0;
 	audioRate = (audio_rate <= 3) ? audio_rate : 0;
 	audioChannels = (audio_chan <= 2) ? audio_chan : 0;	
-	rgbMode = (rgb_mode <= 1) ? rgb_mode : 0;	
+	rgbMode = (rgb_mode <= 2) ? rgb_mode : 0;	
 	poc = (PoC_type *) calloc(1, sizeof(PoC_type));
 	initDDR();
 	isBlitting = 0;	
@@ -1045,7 +1046,7 @@ static void groovy_start()
 	if (doScreensaver)
 	{
 		loadLogo(1);
-		groovy_FPGA_init(1, 0, 0, 0);    		
+		groovy_FPGA_init(1, 0, 0, 0);    			      		
 		groovy_FPGA_blit(); 
 		groovy_FPGA_logo(1); 			
 		groovyLogo = 1;			
@@ -1158,7 +1159,7 @@ void groovy_poll()
 							uint8_t rgb_mode = (len == 5) ? recvbufPtr[4] : 0;														
 							setInit(compression, audio_rate, audio_channels, rgb_mode);							
 							sendACK(0, 0);				
-							LOG(1, "[CMD_INIT][%d][LZ4=%d][Audio rate=%d chan=%d][%s]\n", recvbufPtr[0], compression, audio_rate, audio_channels, (rgb_mode) ? "RGBA888" : "RGB888");											       										
+							LOG(1, "[CMD_INIT][%d][LZ4=%d][Audio rate=%d chan=%d][%s]\n", recvbufPtr[0], compression, audio_rate, audio_channels, (rgb_mode == 1) ? "RGBA888" : (rgb_mode == 2) ? "RGB565" : "RGB888");											       										
 						}	
 					}; break;
 					

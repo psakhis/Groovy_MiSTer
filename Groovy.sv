@@ -224,8 +224,8 @@ localparam CONF_STR = {
    "P3-;",
    "P3O[38],Send inputs,Off,On;",
    "-;",
-   "J1,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9;",        
-   "J2,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9;",        
+   "J1,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9, Button 10;",        
+   "J2,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9, Button 10;",        
    "V,v",`BUILD_DATE
 
 };
@@ -284,9 +284,9 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 wire [35:0] EXT_BUS;
 reg  reset_switchres = 0, vga_frameskip = 0, vga_frameskip_prev = 0, reset_blit = 0, auto_blit = 0, reset_audio = 0, cmd_fskip = 0, reset_blit_lz4 = 0, auto_blit_lz4 = 0, cmd_lz4_error = 0; 
-wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio, cmd_blit_lz4, lz4_AB, rgb_mode;
+wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio, cmd_blit_lz4, lz4_AB;
 wire [15:0] audio_samples;
-wire [1:0] sound_rate, sound_chan;
+wire [1:0] sound_rate, sound_chan, rgb_mode;
 wire [31:0] lz4_size;
 
 hps_ext hps_ext
@@ -504,7 +504,48 @@ task decode_pixel;
   input[23:0] total_pixels; 
   begin  
    case (rgb_mode)
-   1'b1: // RGBA888
+   2'd2: // RGB565
+   begin
+    if (total_pixels - PoC_subframe_px_vram > 3) begin 
+      vram_wren1 <= 1'b1;
+      vram_wren2 <= 1'b1;       
+      vram_wren3 <= 1'b1;
+      vram_wren4 <= 1'b1;
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd4;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd4;                                              
+    end else     
+    if (total_pixels - PoC_subframe_px_vram > 2) begin 
+      vram_wren1 <= 1'b1;
+      vram_wren2 <= 1'b1;       
+      vram_wren3 <= 1'b1;     
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd3;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd3;                                              
+    end else     
+    if (total_pixels - PoC_subframe_px_vram > 1) begin 
+      vram_wren1 <= 1'b1;
+      vram_wren2 <= 1'b1;                
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd2;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd2;                                              
+    end else                 
+    if (total_pixels - PoC_subframe_px_vram > 0) begin          
+      vram_wren1 <= 1'b1;                       
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd1;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd1;                 
+    end
+    b_vram_in1 <= {word64[00 +: 05], word64[00 +: 03]};
+    b_vram_in2 <= {word64[16 +: 05], word64[16 +: 03]};
+    b_vram_in3 <= {word64[32 +: 05], word64[32 +: 03]};
+    b_vram_in4 <= {word64[48 +: 05], word64[48 +: 03]};
+    g_vram_in1 <= {word64[05 +: 06], word64[05 +: 02]};
+    g_vram_in2 <= {word64[21 +: 06], word64[21 +: 02]};
+    g_vram_in3 <= {word64[37 +: 06], word64[37 +: 02]};
+    g_vram_in4 <= {word64[53 +: 06], word64[53 +: 02]};
+    r_vram_in1 <= {word64[11 +: 05], word64[11 +: 03]};
+    r_vram_in2 <= {word64[27 +: 05], word64[27 +: 03]};
+    r_vram_in3 <= {word64[43 +: 05], word64[43 +: 03]};
+    r_vram_in4 <= {word64[59 +: 05], word64[59 +: 03]};
+   end       
+   2'd1: // RGBA888
    begin
     if (total_pixels - PoC_subframe_px_vram > 1) begin 
       vram_wren1 <= 1'b1;
@@ -737,6 +778,7 @@ always @(posedge clk_sys) begin
            vram_wren1                 <= 1'b0;                         
            vram_wren2                 <= 1'b0;                         
            vram_wren3                 <= 1'b0;
+           vram_wren4                 <= 1'b0;
            vram_drive_raw             <= 1'b0; 
            vram_drive_lz4             <= 1'b0;            
              
@@ -791,6 +833,7 @@ always @(posedge clk_sys) begin
            vram_wren1         <= 1'b0;                                                             
            vram_wren2         <= 1'b0;                                                             
            vram_wren3         <= 1'b0; 
+           vram_wren4         <= 1'b0;
            sound_wren1        <= 1'b0;
            sound_wren2        <= 1'b0;
            sound_wren3        <= 1'b0;
@@ -884,7 +927,7 @@ always @(posedge clk_sys) begin
                vram_reset              <= vga_pixels != vram_pixels ? 1'b1 : 1'b0; // prev. ddr crushed?                                        
              end                                 
              PoC_subframe_bl_vram    <= PoC_subframe_bl_ddr;
-             PoC_subframe_ddr_bytes  <= (rgb_mode) ? (PoC_subframe_px_ddr << 2) : (PoC_subframe_px_ddr << 1) + PoC_subframe_px_ddr;             
+             PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_subframe_px_ddr << 2) : (rgb_mode == 2) ? (PoC_subframe_px_ddr << 1) : (PoC_subframe_px_ddr << 1) + PoC_subframe_px_ddr;             
              state                   <= S_Blit_Prepare_Raw;                               
            end                          
          end          
@@ -909,7 +952,8 @@ always @(posedge clk_sys) begin
            if (ddr_busy) ddr_data_req <= 1'b0;                                  
            vram_wren1                 <= 1'b0;  
            vram_wren2                 <= 1'b0;  
-           vram_wren3                 <= 1'b0;     
+           vram_wren3                 <= 1'b0;
+           vram_wren4                 <= 1'b0;     
            vga_wait_vblank            <= !vram_drive_lz4 && vram_queue == 0 && !vblank_core ? 1'b1 : 1'b0;                  
            vga_soft_reset             <= 1'b0;            
            if (ddr_data_ready) begin             
@@ -928,7 +972,8 @@ always @(posedge clk_sys) begin
          begin 
            vram_wren1                <= 1'b0;
            vram_wren2                <= 1'b0;  
-           vram_wren3                <= 1'b0;                                     
+           vram_wren3                <= 1'b0; 
+           vram_wren4                <= 1'b0;                                    
            if (PoC_subframe_px_vram >= vga_pixels) begin // all pixels saved on vram			              
              PoC_frame_vram          <= PoC_frame_ddr;             
              PoC_subframe_bl_vram    <= 16'd0;
@@ -952,7 +997,7 @@ always @(posedge clk_sys) begin
            PoC_subframe_px_vram    <= 24'd0;
            PoC_subframe_bl_ddr     <= 16'd1;                      
            PoC_subframe_bl_vram    <= 16'd1;                   
-           PoC_subframe_ddr_bytes  <= (rgb_mode) ? (PoC_px_frameskip << 2) : (PoC_px_frameskip << 1) + PoC_px_frameskip;         
+           PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_px_frameskip << 2) : (rgb_mode == 2) ? (PoC_px_frameskip << 1) : (PoC_px_frameskip << 1) + PoC_px_frameskip;         
            PoC_subframe_vram_bytes <= 28'd0;             
            PoC_frame_rgb_offset    <= 2'd0;                                     
            vram_reset              <= 1'b1;            
@@ -984,7 +1029,7 @@ always @(posedge clk_sys) begin
              PoC_subframe_px_ddr     <= PoC_px_frameskip;           
              PoC_subframe_bl_ddr     <= PoC_subframe_bl_vram + 16'd1;                     
              PoC_subframe_bl_vram    <= PoC_subframe_bl_vram + 16'd1;               
-             PoC_subframe_ddr_bytes  <= (rgb_mode) ? (PoC_px_frameskip << 2) : (PoC_px_frameskip << 1) + PoC_px_frameskip; 
+             PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_px_frameskip << 2) : (rgb_mode == 2) ? (PoC_px_frameskip << 1) : (PoC_px_frameskip << 1) + PoC_px_frameskip; 
              auto_blit               <= 1'b0;                                               
              state                   <= S_Blit_Prepare_Raw;                                                                   
            end else begin
@@ -1242,6 +1287,7 @@ always @(posedge clk_sys) begin
            vram_wren1      <= 1'b0;
            vram_wren2      <= 1'b0;
            vram_wren3      <= 1'b0;  
+           vram_wren4      <= 1'b0;
            ddr_data_write  <= ddr_data_write && ddr_busy ? 1'b1 : 1'b0;   // last uncompressed isnt writed yet
            vga_wait_vblank <= !vram_drive_raw && !PoC_frame_lz4_FB && vram_queue == 0 && !vblank_core ? 1'b1 : 1'b0;                  
            vga_soft_reset  <= 1'b0;              
@@ -1268,7 +1314,8 @@ always @(posedge clk_sys) begin
          begin 
            vram_wren1           <= 1'b0;
            vram_wren2           <= 1'b0;  
-           vram_wren3           <= 1'b0;   
+           vram_wren3           <= 1'b0; 
+           vram_wren4           <= 1'b0;  
            ddr_data_write       <= 1'b0; 
            lz4_run              <= 1'b0;               
            PoC_lz4_resume_blit  <= cmd_fskip;                        
@@ -1369,11 +1416,10 @@ wire[15:0] vga_vcount;
 wire[31:0] vga_frame;
 
 reg[7:0] r_in = 8'h00, g_in = 8'h00, b_in = 8'h00; 
-reg vram_wren1 = 1'b0, vram_wren2 = 1'b0, vram_wren3 = 1'b0;
-reg[7:0] r_vram_in1 = 8'h00, r_vram_in2 = 8'h00, r_vram_in3 = 8'h00;
-reg[7:0] g_vram_in1 = 8'h00, g_vram_in2 = 8'h00, g_vram_in3 = 8'h00;
-reg[7:0] b_vram_in1 = 8'h00, b_vram_in2 = 8'h00, b_vram_in3 = 8'h00;
-
+reg vram_wren1 = 1'b0, vram_wren2 = 1'b0, vram_wren3 = 1'b0, vram_wren4 = 1'b0;
+reg[7:0] r_vram_in1 = 8'h00, r_vram_in2 = 8'h00, r_vram_in3 = 8'h00, r_vram_in4 = 8'h00;
+reg[7:0] g_vram_in1 = 8'h00, g_vram_in2 = 8'h00, g_vram_in3 = 8'h00, g_vram_in4 = 8'h00;
+reg[7:0] b_vram_in1 = 8'h00, b_vram_in2 = 8'h00, b_vram_in3 = 8'h00, b_vram_in4 = 8'h00;
 
 vga vga 
 (           
@@ -1411,6 +1457,10 @@ vga vga
  .r_vram_in3     (r_vram_in3),        // active vram r in
  .g_vram_in3     (g_vram_in3),        // active vram g in 
  .b_vram_in3     (b_vram_in3),        // active vram b in
+ .vram_wren4     (vram_wren4),        // write pixel {r_in, g_in, b_in} to vram    
+ .r_vram_in4     (r_vram_in4),        // active vram r in
+ .g_vram_in4     (g_vram_in4),        // active vram g in 
+ .b_vram_in4     (b_vram_in4),        // active vram b in
  .r_in           (r_in),              // non active vram r in (used for testing)
  .g_in           (g_in),              // non active vram g in (used for testing)
  .b_in           (b_in),              // non active vram b in (used for testing)  
