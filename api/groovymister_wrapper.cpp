@@ -32,7 +32,8 @@ MODULE_API_GMW void gmw_close(void)
 	if (gmw != NULL)
 	{
 		gmw->CmdClose();
-		delete gmw;	
+		delete gmw;
+		gmw = NULL;	
 	} 
 	else
 	{

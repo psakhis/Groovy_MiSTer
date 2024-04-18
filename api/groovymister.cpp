@@ -97,9 +97,15 @@ GroovyMister::GroovyMister()
 
 GroovyMister::~GroovyMister()
 {
-  	free(pBufferBlit);
-  	free(pBufferAudio);
-  	free(m_pBufferLZ4);  	
+#ifdef _WIN32
+	VirtualFree(pBufferBlit, 0, MEM_RELEASE);
+	VirtualFree(pBufferAudio, 0, MEM_RELEASE);
+	VirtualFree(m_pBufferLZ4, 0, MEM_RELEASE);
+#else
+	free(pBufferBlit);
+	free(pBufferAudio);
+	free(m_pBufferLZ4);      
+#endif 	
 }
 
 void GroovyMister::CmdClose(void)
