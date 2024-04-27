@@ -74,6 +74,8 @@ retroach.exe -L cores/xxxx.dll file
   
     mister_ip = "192.x.x.x"
     mister_lz4 = "3" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
+    crt_switch_resolution = "4" (switchres.ini custom file)
+    crt_switch_resolution_super = "0"
     video_mister_enable = "true"
     video_vsync = "false"
     mister_scanlines = "true" 
