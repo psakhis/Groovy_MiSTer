@@ -69,6 +69,7 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
   
 ### Retroarch (test build)
 retroach.exe -L cores/xxxx.dll file
+
 for src details, see Retroarch fork by @Calamity. https://github.com/antonioginer/RetroArch/tree/mister  
  ,on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
