@@ -27,7 +27,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 - (20240302) New PWM core option (implemented by https://github.com/Jokippo)
 - (20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
 - (20240401) GroovyMame and Mednafen joysticks from mister
-- (20240427) Retroarch 
+- (20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
 
 To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
   
@@ -69,8 +69,8 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
   
 ### Retroarch (test build)
 retroach.exe -L cores/xxxx.dll file
-  
-  on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
+for src details, see Retroarch fork by @Calamity. https://github.com/antonioginer/RetroArch/tree/mister  
+ ,on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
     mister_lz4 = "3" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
