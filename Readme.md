@@ -83,9 +83,12 @@ retroach.exe -L cores/xxxx.dll file
     mister_interlaced_fb = "false"
     input_joypad_driver = "mister" (for input controllers connected on MiSTer)
     menu_driver = "rgui" (it's the only menu supported)
+    vrr_runloop_enable = "true" (better performance for flycast)
+    audio_sync = "false" (better performance for flycast)
 
     *Automatic frame delay for best results on latency options
-
+    *For dosbox core, set 60fps on core options.
+    
 ### MiSTerCast 
 Thanks to @Shane for this great windows utility to mirror desktop. https://github.com/iequalshane/MiSTerCast
 
