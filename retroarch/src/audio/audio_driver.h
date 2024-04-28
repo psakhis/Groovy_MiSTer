@@ -173,7 +173,7 @@ typedef struct
    double source_ratio_current;
 
    uint64_t free_samples_count;
-   
+
    struct string_list *devices_list;
 
    /**
@@ -200,11 +200,12 @@ typedef struct
 
    void *resampler_data;
 
-#ifdef HAVE_MISTER //psakhis            
+#ifdef HAVE_MISTER //psakhis
       int16_t output_mister_samples_conv_buf[AUDIO_BUFFER_FREE_SAMPLES_COUNT * 2];
       uint64_t output_mister_samples;
       bool output_mister;
 #endif
+
    /**
     * The current audio driver.
     */

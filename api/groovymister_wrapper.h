@@ -69,30 +69,30 @@ extern "C" {
 typedef struct MODULE_API_GMW
 {
 	uint32_t frame;		//frame on gpu
- 	uint32_t frameEcho;	//frame received
- 	uint16_t vCount;	//vertical count on gpu
- 	uint16_t vCountEcho; 	//vertical received
- 	
- 	uint8_t vramEndFrame; 	//1-fpga has all pixels on vram for last CmdBlit
- 	uint8_t vramReady;	//1-fpga has free space on vram
- 	uint8_t vramSynced;	//1-fpga has synced (not red screen)
- 	uint8_t vgaFrameskip;	//1-fpga used framebuffer (volatile framebuffer off)
- 	uint8_t vgaVblank;	//1-fpga is on vblank
- 	uint8_t vgaF1;		//1-field for interlaced
- 	uint8_t audio;		//1-fgpa has audio activated
- 	uint8_t vramQueue; 	//1-fpga has pixels prepared on vram 	 	
+	uint32_t frameEcho;	//frame received
+	uint16_t vCount;	//vertical count on gpu
+	uint16_t vCountEcho; 	//vertical received
+
+	uint8_t vramEndFrame; 	//1-fpga has all pixels on vram for last CmdBlit
+	uint8_t vramReady;	//1-fpga has free space on vram
+	uint8_t vramSynced;	//1-fpga has synced (not red screen)
+	uint8_t vgaFrameskip;	//1-fpga used framebuffer (volatile framebuffer off)
+	uint8_t vgaVblank;	//1-fpga is on vblank
+	uint8_t vgaF1;		//1-field for interlaced
+	uint8_t audio;		//1-fgpa has audio activated
+	uint8_t vramQueue; 	//1-fpga has pixels prepared on vram
 } gmw_fpgaStatus;
 
 typedef struct MODULE_API_GMW{
 	uint32_t joyFrame;	//joystick blit frame
- 	uint8_t  joyOrder;	//joystick blit order
- 	uint16_t joy1;	 	//joystick 1 map
- 	uint16_t joy2;	 	//joystick 2 map
+	uint8_t  joyOrder;	//joystick blit order
+	uint16_t joy1;	 	//joystick 1 map
+	uint16_t joy2;	 	//joystick 2 map
 } gmw_fpgaInputs;
 
 /* Declaration of the wrapper functions */
 
-// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565)
+// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc, 3-lz4 adaptative), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565)
 MODULE_API_GMW void gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
 // Close stream
 MODULE_API_GMW void gmw_close(void);
@@ -106,10 +106,12 @@ MODULE_API_GMW void gmw_blit(uint32_t frame, uint16_t vCountSync, uint32_t margi
 MODULE_API_GMW char* gmw_get_pBufferAudio(void);
 // Stream audio
 MODULE_API_GMW void gmw_audio(uint16_t soundSize);
-// sleep to sync with crt raster 
+// sleep to sync with crt raster
 MODULE_API_GMW void gmw_waitSync(void);
+// get nanoseconds (positive or negative) to sync with raster
+MODULE_API_GMW int gmw_diffTimeRaster(void);
 // getACK is used internal on WaitSync, dwMilliseconds = 0 will time out immediately if no new data
-MODULE_API_GMW uint32_t gmw_getACK(uint8_t dwMilliseconds); 
+MODULE_API_GMW uint32_t gmw_getACK(uint8_t dwMilliseconds);
 // get fpga status from last ACK received
 MODULE_API_GMW void gmw_getStatus(gmw_fpgaStatus* status);
 // listen inputs from MiSTer
@@ -128,7 +130,7 @@ MODULE_API_GMW void gmw_set_log_level(int level);
 /* Inspired by https://stackoverflow.com/a/1067684 */
 typedef struct MODULE_API_GMW
 {
-	void (*init)(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);	
+	void (*init)(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
 	void (*close)(void);
 	void (*switchres)(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
 	char*(*get_pBufferBlit)(void);
@@ -136,12 +138,13 @@ typedef struct MODULE_API_GMW
 	char*(*get_pBufferAudio)(void);
 	void (*audio)(uint16_t soundSize);
 	void (*waitSync)(void);
-	uint32_t (*getACK)(uint8_t dwMilliseconds); 
+	void (*diffTimeRaster)(void);
+	uint32_t (*getACK)(uint8_t dwMilliseconds);
 	void (*getStatus)(gmw_fpgaStatus* status);
 	void (*bindInputs)(const char* misterHost);
 	void (*pollInputs)(void);
 	void (*getInputs)(gmw_fpgaInputs* inputs);
-	const char* (*get_version)(void);        
+	const char* (*get_version)(void);
 	void (*set_log_level) (int level);
 } gmwAPI;
 

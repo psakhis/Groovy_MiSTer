@@ -48,6 +48,10 @@
 #include "../network/netplay/netplay.h"
 #endif
 
+#ifdef HAVE_MISTER
+#include "gfx/gfx_mister.h"
+#endif
+
 #include "../configuration.h"
 #include "../driver.h"
 #include "../frontend/frontend_driver.h"
@@ -426,7 +430,6 @@ static void audio_driver_flush(
 
    src_data.data_in                  = audio_st->input_data;
    src_data.input_frames             = samples >> 1;
-    
    /* Remember, we allocated buffers that are twice as big as needed.
     * (see audio_driver_init) */
 
@@ -466,7 +469,7 @@ static void audio_driver_flush(
 
       if (audio_st->flags & AUDIO_FLAG_CONTROL)
       {
-         // Readjust the audio input rate. 
+         /* Readjust the audio input rate. */
          int avail                   = (int)audio_st->current_audio->write_avail(
                audio_st->context_audio_data);
          int half_size               = (int)(audio_st->buffer_size / 2);
@@ -477,11 +480,9 @@ static void audio_driver_flush(
          audio_st->free_samples_buf[write_idx]
                                      = avail;
          audio_st->source_ratio_current
-                                     = audio_st->source_ratio_original * adjust;                                                                              
+                                     = audio_st->source_ratio_original * adjust;
       }
-      
-      
-               
+
 #if 0
       if (verbosity_is_enabled())
       {
@@ -559,7 +560,7 @@ static void audio_driver_flush(
       const void *output_data = audio_st->output_samples_buf;
       unsigned output_frames  = (unsigned)src_data.output_frames; /* Unit: frames */
 
-      if (audio_st->flags & AUDIO_FLAG_USE_FLOAT) 
+      if (audio_st->flags & AUDIO_FLAG_USE_FLOAT)
          output_frames       *= sizeof(float); /* Unit: bytes */
       else
       {
@@ -570,13 +571,17 @@ static void audio_driver_flush(
          output_frames       *= sizeof(int16_t);  /* Unit: bytes */
       }
 
-#ifdef HAVE_MISTER //psakhis 
-      settings_t *settings   = config_get_ptr();     
-      if (settings->bools.video_mister_enable)
-      {     
-      	memcpy(&audio_st->output_mister_samples_conv_buf[audio_st->output_mister_samples], output_data, output_frames << 1); 
-      	audio_st->output_mister_samples += output_frames;           
-      }	
+#ifdef HAVE_MISTER //psakhis
+      settings_t *settings   = config_get_ptr();
+      if (settings->bools.video_mister_enable && mister_is_connected())
+      {
+         // flush buffer if needed
+         if (audio_st->output_mister_samples + output_frames > AUDIO_BUFFER_FREE_SAMPLES_COUNT)
+            mister_audio();
+
+         memcpy(&audio_st->output_mister_samples_conv_buf[audio_st->output_mister_samples], output_data, output_frames << 1);
+         audio_st->output_mister_samples += output_frames;
+      }
 #endif
 
       audio_st->current_audio->write(audio_st->context_audio_data,
@@ -645,10 +650,10 @@ bool audio_driver_init_internal(
    audio_driver_st.chunk_nonblock_size            = AUDIO_CHUNK_SIZE_NONBLOCKING;
    audio_driver_st.chunk_size                     = audio_driver_st.chunk_block_size;
 
-#ifdef HAVE_MISTER //psakhis 
+#ifdef HAVE_MISTER //psakhis
    audio_driver_st.output_mister_samples          = 0;
    audio_driver_st.output_mister                  = false;
-#endif    
+#endif
 
 #ifdef HAVE_REWIND
    /* Needs to be able to hold full content of a full max_bufsamples
@@ -885,19 +890,17 @@ size_t audio_driver_sample_batch(const int16_t *data, size_t frames)
     * conditional jump and an unconditional jump). Note,
     * however, that this is only relevant for compilers
     * that are poor at optimisation... */
-      
    do
    {
-   	 
       size_t frames_to_write =
             (frames_remaining > (AUDIO_CHUNK_SIZE_NONBLOCKING >> 1)) ?
                   (AUDIO_CHUNK_SIZE_NONBLOCKING >> 1) : frames_remaining;
 
-#ifdef HAVE_MISTER //psakhis     
-    settings_t *settings           = config_get_ptr();     
-    if (settings->bools.video_mister_enable && !(runloop_flags & RUNLOOP_FLAG_PAUSED) && (audio_st->flags & AUDIO_FLAG_ACTIVE))
-       audio_st->output_mister = false;       	         
-#endif 
+#ifdef HAVE_MISTER //psakhis
+      settings_t *settings           = config_get_ptr();
+      if (settings->bools.video_mister_enable && !(runloop_flags & RUNLOOP_FLAG_PAUSED) && (audio_st->flags & AUDIO_FLAG_ACTIVE))
+         audio_st->output_mister = false;
+#endif
 
       if (    record_st->data
            && record_st->driver
@@ -924,14 +927,12 @@ size_t audio_driver_sample_batch(const int16_t *data, size_t frames)
 
       frames_remaining -= frames_to_write;
       data             += frames_to_write << 1;
-            
    }
    while (frames_remaining > 0);
-   
-#ifdef HAVE_MISTER //psakhis   
-   audio_st->output_mister = true;  
+
+#ifdef HAVE_MISTER //psakhis
+   audio_st->output_mister = true;
 #endif
-   
 
    return frames;
 }

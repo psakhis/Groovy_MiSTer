@@ -202,6 +202,9 @@
 #ifdef HAVE_CRTSWITCHRES
 #include "gfx/video_crt_switch.h"
 #endif
+#ifdef HAVE_MISTER
+#include "gfx/gfx_mister.h"
+#endif
 #ifdef HAVE_BLUETOOTH
 #include "bluetooth/bluetooth_driver.h"
 #endif
@@ -1971,6 +1974,7 @@ bool runloop_environment_cb(unsigned cmd, void *data)
 
                if (!string_is_empty(fullpath))
                {
+                  size_t len;
                   char tmp_path[PATH_MAX_LENGTH];
 
                   if (string_is_empty(dir_system))
@@ -1979,12 +1983,21 @@ bool runloop_environment_cb(unsigned cmd, void *data)
 
                   strlcpy(tmp_path, fullpath, sizeof(tmp_path));
                   path_basedir(tmp_path);
-                  dir_set(RARCH_DIR_SYSTEM, tmp_path);
-               }
 
-               *(const char**)data = dir_get_ptr(RARCH_DIR_SYSTEM);
+                  /* Removes trailing slash (unless root dir) */
+                  len = strlen(tmp_path);
+                  if (     string_count_occurrences_single_character(tmp_path, PATH_DEFAULT_SLASH_C()) > 1
+                        && tmp_path[len - 1] == PATH_DEFAULT_SLASH_C())
+                     tmp_path[len - 1] = '\0';
+
+                  dir_set(RARCH_DIR_SYSTEM, tmp_path);
+                  *(const char**)data = dir_get_ptr(RARCH_DIR_SYSTEM);
+               }
+               else /* If content path is empty, fall back to global system dir path */
+                  *(const char**)data = dir_system;
+
                RARCH_LOG("[Environ]: SYSTEM_DIRECTORY: \"%s\".\n",
-                     dir_system);
+                     *(const char**)data);
             }
             else
             {
@@ -2618,6 +2631,17 @@ bool runloop_environment_cb(unsigned cmd, void *data)
          break;
       }
 
+      case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY:
+      {
+         const char **dir            = (const char**)data;
+         const char *dir_playlist    = settings->paths.directory_playlist;
+
+         *dir = *dir_playlist ? dir_playlist : NULL;
+         RARCH_LOG("[Environ]: PLAYLIST_DIRECTORY: \"%s\".\n",
+               dir_playlist);
+         break;
+      }
+
       case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
       /**
        * Update the system Audio/Video information.
@@ -3242,7 +3266,7 @@ bool runloop_environment_cb(unsigned cmd, void *data)
 
          /* Base mode and rate. */
          throttle_state->mode = RETRO_THROTTLE_NONE;
-         throttle_state->rate = core_fps;         
+         throttle_state->rate = core_fps;
 
          if (runloop_st->flags & RUNLOOP_FLAG_FASTMOTION)
          {
@@ -3286,7 +3310,6 @@ bool runloop_environment_cb(unsigned cmd, void *data)
                   ? (retro_time_t)(1000000.0f / core_fps)
                   : (retro_time_t)0);
             retro_time_t frame_limit    = runloop_st->frame_limit_minimum_time;
-           
             if (abs((int)(core_limit - frame_limit)) > 10)
             {
                throttle_state->mode     = RETRO_THROTTLE_UNBLOCKED;
@@ -3902,9 +3925,8 @@ static retro_time_t runloop_core_runtime_tick(
    video_driver_state_t *video_st       = video_state_get_ptr();
    retro_time_t frame_time              =
       (1.0 / video_st->av_info.timing.fps) * 1000000;
-    
    bool runloop_slowmotion              = (runloop_st->flags & RUNLOOP_FLAG_SLOWMOTION) ? true : false;
-   bool runloop_fastmotion              = (runloop_st->flags & RUNLOOP_FLAG_FASTMOTION) ? true : false; 
+   bool runloop_fastmotion              = (runloop_st->flags & RUNLOOP_FLAG_FASTMOTION) ? true : false;
 
    /* Account for slow motion */
    if (runloop_slowmotion)
@@ -4069,11 +4091,15 @@ void runloop_event_deinit_core(void)
       input_remapping_set_defaults(true);
    }
    else
-      input_remapping_restore_global_config(true);
+      input_remapping_restore_global_config(true, false);
 
    RARCH_LOG("[Core]: Unloading core symbols..\n");
    uninit_libretro_symbols(&runloop_st->current_core);
    runloop_st->current_core.flags &= ~RETRO_CORE_FLAG_SYMBOLS_INITED;
+
+#if defined HAVE_MISTER //psakhis
+   mister_close(); //psakhis
+#endif
 
    /* Restore original refresh rate, if it has been changed
     * automatically in SET_SYSTEM_AV_INFO */
@@ -4387,7 +4413,7 @@ void runloop_set_frame_limit(
    else
       runloop_st->frame_limit_minimum_time = (retro_time_t)
          roundf(1000000.0f /
-               (av_info->timing.fps * fastforward_ratio));                          
+               (av_info->timing.fps * fastforward_ratio));
 }
 
 float runloop_get_fastforward_ratio(
@@ -4766,6 +4792,7 @@ void runloop_pause_checks(void)
    presence_userdata_t userdata;
 #endif
    video_driver_state_t *video_st = video_state_get_ptr();
+   settings_t *settings           = config_get_ptr();
    runloop_state_t *runloop_st    = &runloop_state;
    bool is_paused                 = (runloop_st->flags & RUNLOOP_FLAG_PAUSED) ? true : false;
    bool is_idle                   = (runloop_st->flags & RUNLOOP_FLAG_IDLE)   ? true : false;
@@ -4803,12 +4830,21 @@ void runloop_pause_checks(void)
 #ifdef HAVE_LAKKA
       set_cpu_scaling_signal(CPUSCALING_EVENT_FOCUS_MENU);
 #endif
+
+      /* Limit paused frames to video refresh. */
+      runloop_st->frame_limit_minimum_time = (retro_time_t)roundf(1000000.0f /
+            ((video_st->video_refresh_rate_original)
+               ? video_st->video_refresh_rate_original
+               : settings->floats.video_refresh_rate));
    }
    else
    {
 #ifdef HAVE_LAKKA
       set_cpu_scaling_signal(CPUSCALING_EVENT_FOCUS_CORE);
 #endif
+
+      /* Restore frame limit. */
+      runloop_set_frame_limit(&video_st->av_info, settings->floats.fastforward_ratio);
    }
 
 #if defined(HAVE_TRANSLATE) && defined(HAVE_GFX_WIDGETS)
@@ -6017,7 +6053,7 @@ static enum runloop_state_enum runloop_check_state(
             menu->state               = 0;
          }
 
-         if (!libretro_running)
+         if (settings->bools.audio_enable_menu && !libretro_running)
             audio_driver_menu_sample();
       }
 
@@ -6238,22 +6274,23 @@ static enum runloop_state_enum runloop_check_state(
 #ifdef HAVE_CHEEVOS
       if (cheevos_hardcore_active)
       {
-         static int unpaused_frames = 0;
-
-         if (runloop_st->flags & RUNLOOP_FLAG_PAUSED)
-            unpaused_frames         = 0;
-         else
-         /* Frame advance is not allowed when achievement hardcore is active */
+         if (!(runloop_st->flags & RUNLOOP_FLAG_PAUSED))
          {
-            /* Limit pause to approximately three times per second (depending on core framerate) */
-            if (unpaused_frames < 20)
+            /* In hardcore mode, the user is only allowed to pause infrequently. */
+            if ((pause_pressed && !old_pause_pressed) ||
+               (!focused && old_focus && pause_nonactive))
             {
-               ++unpaused_frames;
-               pause_pressed        = false;
+               /* If the user is trying to pause, check to see if it's allowed. */
+               if (!rcheevos_is_pause_allowed())
+               {
+                  pause_pressed = false;
+                  if (pause_nonactive)
+                     focused = true;
+               }
             }
          }
       }
-      else
+      else /* frame advance not allowed in hardcore */
 #endif
       {
          frameadvance_pressed = BIT256_GET(current_bits, RARCH_FRAMEADVANCE);
@@ -6815,15 +6852,6 @@ int runloop_iterate(void)
 #endif
    settings_t *settings                         = config_get_ptr();
    runloop_state_t *runloop_st                  = &runloop_state;
-   
-#ifdef HAVE_MISTER //psakhis
-   if (settings->bools.video_mister_enable)
-   {
-   	settings->bools.video_vsync = false;
-   	settings->bools.vrr_runloop_enable = true;   
-   }
-#endif      
-   
    bool vrr_runloop_enable                      = settings->bools.vrr_runloop_enable;
    unsigned max_users                           = settings->uints.input_max_users;
    retro_time_t current_time                    = cpu_features_get_time_usec();
@@ -6863,7 +6891,6 @@ int runloop_iterate(void)
        * Limits frame time if fast forward ratio throttle is enabled. */
       retro_usec_t runloop_last_frame_time = runloop_st->frame_time_last;
       retro_time_t current                 = current_time;
-      
       bool is_locked_fps                   = (
                (runloop_st->flags & RUNLOOP_FLAG_PAUSED)
             || (input_st->flags & INP_FLAG_NONBLOCKING))
@@ -6884,7 +6911,6 @@ int runloop_iterate(void)
 
       if (!core_paused)
          runloop_st->frame_time.callback(delta);
-             
    }
 
    /* Update audio buffer occupancy if buffer status
@@ -6926,7 +6952,7 @@ int runloop_iterate(void)
          runloop_st->audio_buffer_status.callback(
                audio_buf_active, audio_buf_occupancy, audio_buf_underrun);
    }
-            
+
    switch ((enum runloop_state_enum)runloop_check_state(
             global_get_ptr()->error_on_init,
             settings, current_time))
@@ -6936,7 +6962,7 @@ int runloop_iterate(void)
          runloop_st->flags                &= ~RUNLOOP_FLAG_CORE_RUNNING;
          command_event(CMD_EVENT_QUIT, NULL);
          return -1;
-      case RUNLOOP_STATE_POLLED_AND_SLEEP:       
+      case RUNLOOP_STATE_POLLED_AND_SLEEP:
 #ifdef HAVE_NETWORKING
          /* FIXME: This is an ugly way to tell Netplay this... */
          netplay_driver_ctl(RARCH_NETPLAY_CTL_PAUSE, NULL);
@@ -6952,7 +6978,7 @@ int runloop_iterate(void)
          netplay_driver_ctl(RARCH_NETPLAY_CTL_PAUSE, NULL);
 #endif
          video_driver_cached_frame();
-         return 1;
+         goto end;
       case RUNLOOP_STATE_MENU:
 #ifdef HAVE_NETWORKING
 #ifdef HAVE_MENU
@@ -6972,12 +6998,10 @@ int runloop_iterate(void)
 
          /* Otherwise run menu in video refresh rate speed. */
          if (menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE)
-         {
-            float refresh_rate = (video_st->video_refresh_rate_original)
-                  ? video_st->video_refresh_rate_original : settings->floats.video_refresh_rate;
-
-            runloop_st->frame_limit_minimum_time = (retro_time_t)roundf(1000000.0f / refresh_rate);
-         }
+            runloop_st->frame_limit_minimum_time = (retro_time_t)roundf(1000000.0f /
+                  ((video_st->video_refresh_rate_original)
+                     ? video_st->video_refresh_rate_original
+                     : settings->floats.video_refresh_rate));
          else
             runloop_set_frame_limit(&video_st->av_info, settings->floats.fastforward_ratio);
 #endif
@@ -7078,14 +7102,6 @@ int runloop_iterate(void)
       }
    }
 
-#ifdef HAVE_MISTER //psakhis
-   retro_time_t mister_et1 = 0;
-   if (settings->bools.video_mister_enable)
-   {
-   	mister_et1 = cpu_features_get_time_usec();
-   }	
-#endif
-  
    {
 #ifdef HAVE_RUNAHEAD
       bool run_ahead_enabled            = settings->bools.run_ahead_enabled;
@@ -7107,11 +7123,11 @@ int runloop_iterate(void)
                run_ahead_num_frames,
                run_ahead_hide_warnings,
                run_ahead_secondary_instance);
-      else if (runloop_st->preempt_data)     
-         preempt_run(runloop_st->preempt_data, runloop_st);       
+      else if (runloop_st->preempt_data)
+         preempt_run(runloop_st->preempt_data, runloop_st);
       else
-#endif 	 
-         core_run();                                    
+#endif
+         core_run();
    }
 
    /* Increment runtime tick counter after each call to
@@ -7120,15 +7136,6 @@ int runloop_iterate(void)
          runloop_st,
          slowmotion_ratio,
          current_time);
-
-#ifdef HAVE_MISTER //psakhis     
-   int mister_dif = 0;
-   if (settings->bools.video_mister_enable)
-   {       	   	
-   	retro_time_t mister_et2  = cpu_features_get_time_usec();         
-   	mister_dif = video_mister_sync(mister_et2 - mister_et1);   	   	   	   	  
-   }  		
-#endif  
 
 #ifdef HAVE_CHEEVOS
    if (cheevos_enable)
@@ -7185,7 +7192,7 @@ int runloop_iterate(void)
 
 end:
    if (vrr_runloop_enable)
-   { 
+   {
       /* Sync on video only, block audio later. */
       if (runloop_st->fastforward_after_frames && audio_sync)
       {
@@ -7214,7 +7221,7 @@ end:
             audio_st->chunk_size = audio_st->chunk_block_size;
             runloop_st->fastforward_after_frames = 0;
          }
-      }      
+      }
 
       if (runloop_st->flags & RUNLOOP_FLAG_FASTMOTION)
          runloop_set_frame_limit(&video_st->av_info,
@@ -7222,20 +7229,23 @@ end:
                   &runloop_st->fastmotion_override.current));
       else
          runloop_set_frame_limit(&video_st->av_info, 1.0f);
-             
    }
 
    /* if there's a fast forward limit, inject sleeps to keep from going too fast. */
-   if (runloop_st->frame_limit_minimum_time)
-   { 
+   if (   (runloop_st->frame_limit_minimum_time)
+          && (   (vrr_runloop_enable)
+              || (runloop_st->flags & RUNLOOP_FLAG_FASTMOTION)
+#ifdef HAVE_MENU
+              || (menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE && !(settings->bools.video_vsync))
+#endif
+              || (runloop_st->flags & RUNLOOP_FLAG_PAUSED)))
+   {
 
-#ifdef HAVE_MISTER //psakhis        
-      if (settings->bools.video_mister_enable)
-      {               
-	 runloop_st->frame_limit_last_time += mister_dif;   	   		
-      }  		
-#endif 
-   	
+#ifdef HAVE_MISTER
+   if (settings->bools.video_mister_enable)
+      runloop_st->frame_limit_last_time += mister_diff_time_raster() / 10;
+#endif
+
       const retro_time_t end_frame_time  = cpu_features_get_time_usec();
       const retro_time_t to_sleep_ms     = (
             (  runloop_st->frame_limit_last_time
@@ -7244,9 +7254,9 @@ end:
 
       if (to_sleep_ms > 0)
       {
-         unsigned               sleep_ms = (unsigned)to_sleep_ms;         
-	
-         /* Combat jitter a bit. */         
+         unsigned               sleep_ms = (unsigned)to_sleep_ms;
+
+         /* Combat jitter a bit. */
          runloop_st->frame_limit_last_time +=
             runloop_st->frame_limit_minimum_time;
 
@@ -7264,12 +7274,17 @@ end:
       runloop_st->frame_limit_last_time = end_frame_time;
    }
 
-   /* Post-frame power saving sleep resting */   
+#ifdef HAVE_MISTER
+   if (settings->bools.video_mister_enable && !vrr_runloop_enable && audio_sync)
+      mister_sync();
+#endif
+
+   /* Post-frame power saving sleep resting */
    if (      settings->bools.video_frame_rest
          && !(input_st->flags & INP_FLAG_NONBLOCKING))
       video_frame_rest(video_st, settings, current_time);
 
-   /* Set paused state after x frames */   
+   /* Set paused state after x frames */
    if (runloop_st->run_frames_and_pause > 0)
    {
       runloop_st->run_frames_and_pause--;

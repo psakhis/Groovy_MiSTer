@@ -415,6 +415,7 @@ typedef struct video_frame_info
    unsigned custom_vp_full_width;
    unsigned custom_vp_full_height;
    unsigned black_frame_insertion;
+   unsigned bfi_dark_frames;
    unsigned fps_update_interval;
    unsigned memory_update_interval;
    unsigned msg_queue_delay;
@@ -1100,11 +1101,11 @@ void video_frame_delay_auto(video_driver_state_t *video_st,
 void video_frame_rest(video_driver_state_t *video_st,
       settings_t *settings,
       retro_time_t current_time);
-      
+
 #ifdef HAVE_MISTER //psakhis
 int video_mister_sync(retro_time_t emulationTime);
 #endif
-      
+
 
 /**
  * video_context_driver_init:
