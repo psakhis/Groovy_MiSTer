@@ -82,6 +82,7 @@ retroach.exe -L cores/xxxx.dll file
     mister_force_rgb565 = "false" (activate it when bandwidth problems)
     mister_interlaced_fb = "false"
     input_joypad_driver = "mister" (for input controllers connected on MiSTer)
+    menu_driver = "rgui" (it's the only menu supported)
 
     *Automatic frame delay for best results on latency options
 
