@@ -81,7 +81,7 @@ for src details, see Retroarch fork by @Calamity. https://github.com/antoniogine
     video_vsync = "false"
     mister_scanlines = "true" 
     mister_force_rgb565 = "false" (activate it when bandwidth problems)
-    mister_interlaced_fb = "false"
+    mister_interlaced_fb = "true"
     input_joypad_driver = "mister" (for input controllers connected on MiSTer)
     menu_driver = "rgui" (it's the only menu supported)
     vrr_runloop_enable = "true" (better performance for flycast)
