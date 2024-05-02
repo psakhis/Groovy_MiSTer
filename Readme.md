@@ -27,7 +27,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 - (20240302) New PWM core option (implemented by https://github.com/Jokippo)
 - (20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
 - (20240401) GroovyMame and Mednafen joysticks from mister
-- (20240427) Retroarch 
+- (20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
 
 To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
   
@@ -69,8 +69,9 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
   
 ### Retroarch (test build)
 retroach.exe -L cores/xxxx.dll file
-  
-  on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
+
+for src details, see Retroarch fork by @Calamity. https://github.com/antonioginer/RetroArch/tree/mister  
+ ,on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
     mister_lz4 = "3" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
@@ -80,12 +81,15 @@ retroach.exe -L cores/xxxx.dll file
     video_vsync = "false"
     mister_scanlines = "true" 
     mister_force_rgb565 = "false" (activate it when bandwidth problems)
-    mister_interlaced_fb = "false"
+    mister_interlaced_fb = "true"
     input_joypad_driver = "mister" (for input controllers connected on MiSTer)
     menu_driver = "rgui" (it's the only menu supported)
+    vrr_runloop_enable = "true" (better performance for flycast)
+    audio_sync = "false" (better performance for flycast)
 
     *Automatic frame delay for best results on latency options
-
+    *For dosbox core, set 60fps on core options.
+    
 ### MiSTerCast 
 Thanks to @Shane for this great windows utility to mirror desktop. https://github.com/iequalshane/MiSTerCast
 
