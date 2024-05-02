@@ -28,6 +28,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 - (20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
 - (20240401) GroovyMame and Mednafen joysticks from mister
 - (20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
+- (20240502) Mednafen support for analog joysticks, keyboard and mouse
 
 To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
   
