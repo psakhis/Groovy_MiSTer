@@ -88,7 +88,25 @@ typedef struct MODULE_API_GMW{
 	uint8_t  joyOrder;	//joystick blit order
 	uint16_t joy1;	 	//joystick 1 map
 	uint16_t joy2;	 	//joystick 2 map
-} gmw_fpgaInputs;
+	char     joy1LXAnalog; 	//joystick 1 L-Analog X
+	char     joy1LYAnalog; 	//joystick 1 L-Analog Y
+	char     joy1RXAnalog; 	//joystick 1 R-Analog X
+	char     joy1RYAnalog; 	//joystick 1 R-Analog Y
+	char     joy2LXAnalog; 	//joystick 2 L-Analog X
+	char     joy2LYAnalog; 	//joystick 2 L-Analog Y
+	char     joy2RXAnalog; 	//joystick 2 R-Analog X
+	char     joy2RYAnalog; 	//joystick 2 R-Analog Y
+} gmw_fpgaJoyInputs;
+
+typedef struct MODULE_API_GMW{
+	uint32_t ps2Frame;	//ps2 blit frame
+	uint8_t  ps2Order;	//ps2 blit order
+	uint8_t  ps2Keys[32]; 	//bit array with sdl scancodes convention	
+	uint8_t  ps2Mouse;	//byte 0 ps2 mouse [yo,xo,ys,xs,1,bm,br,bl]
+	uint8_t  ps2MouseX; 	//byte 1 ps2 mouse X
+	uint8_t  ps2MouseY; 	//byte 2 ps2 mouse Y
+	uint8_t  ps2MouseZ; 	//byte 3 ps2 mouse Z
+}  gmw_fpgaPS2Inputs;
 
 /* Declaration of the wrapper functions */
 
@@ -118,8 +136,10 @@ MODULE_API_GMW void gmw_getStatus(gmw_fpgaStatus* status);
 MODULE_API_GMW void gmw_bindInputs(const char* misterHost);
 // refresh inputs
 MODULE_API_GMW void gmw_pollInputs(void);
-// get inputs
-MODULE_API_GMW void gmw_getInputs(gmw_fpgaInputs* inputs);
+// get joystick inputs
+MODULE_API_GMW void gmw_getJoyInputs(gmw_fpgaJoyInputs* joyInputs);
+// get ps2 inputs
+MODULE_API_GMW void gmw_getPS2Inputs(gmw_fpgaPS2Inputs* ps2Inputs);
 
 // get version
 MODULE_API_GMW const char* gmw_get_version();
@@ -143,7 +163,8 @@ typedef struct MODULE_API_GMW
 	void (*getStatus)(gmw_fpgaStatus* status);
 	void (*bindInputs)(const char* misterHost);
 	void (*pollInputs)(void);
-	void (*getInputs)(gmw_fpgaInputs* inputs);
+	void (*getJoyInputs)(gmw_fpgaJoyInputs* joyInputs);
+	void (*getPS2Inputs)(gmw_fpgaPS2Inputs* ps2Inputs);
 	const char* (*get_version)(void);
 	void (*set_log_level) (int level);
 } gmwAPI;

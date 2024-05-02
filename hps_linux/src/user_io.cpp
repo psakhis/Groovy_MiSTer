@@ -1686,6 +1686,11 @@ void user_io_l_analog_joystick(unsigned char joystick, char valueX, char valueY)
 		}
 		DisableIO();
 	}
+	
+	if (is_groovy())
+	{
+		groovy_send_analog(joystick, 0, valueX, valueY);
+	}
 }
 
 void user_io_r_analog_joystick(unsigned char joystick, char valueX, char valueY)
@@ -1702,6 +1707,11 @@ void user_io_r_analog_joystick(unsigned char joystick, char valueX, char valueY)
 			spi8(valueY);
 		}
 		DisableIO();
+	}
+	
+	if (is_groovy())
+	{
+		groovy_send_analog(joystick, 1, valueX, valueY);
 	}
 }
 
@@ -1724,7 +1734,7 @@ void user_io_digital_joystick(unsigned char joystick, uint32_t map, int newdir)
 	
 	if (is_groovy())
 	{
-		groovy_send_keycode(joystick, map);
+		groovy_send_joystick(joystick, map);
 	}
 }
 
@@ -3661,8 +3671,13 @@ static void send_keycode(unsigned short key, int press)
 
 	if (core_type == CORE_TYPE_8BIT)
 	{
+		if (is_groovy())
+		{
+			groovy_send_keyboard(key, press);
+		}
+		
 		uint32_t code = get_ps2_code(key);
-		if (code == NONE) return;
+		if (code == NONE) return;				
 
 		//pause
 		if ((code & 0xff) == 0xE1)
@@ -3762,7 +3777,7 @@ static void send_keycode(unsigned short key, int press)
 
 			DisableIO();
 		}
-	}
+	}		
 }
 
 void user_io_mouse(unsigned char b, int16_t x, int16_t y, int16_t w)
@@ -3849,6 +3864,11 @@ void user_io_mouse(unsigned char b, int16_t x, int16_t y, int16_t w)
 				spi_w(ps2_mouse[1] | ((((uint16_t)b) << 5) & 0xF00));
 				spi_w(ps2_mouse[2] | ((((uint16_t)b) << 1) & 0x100));
 				DisableIO();
+				
+				if (is_groovy())
+				{
+					groovy_send_mouse(ps2_mouse[0], ps2_mouse[1], ps2_mouse[2], (unsigned char) w);					
+				}
 			}
 		}
 		return;

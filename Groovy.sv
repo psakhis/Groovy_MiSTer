@@ -222,7 +222,8 @@ localparam CONF_STR = {
    "P3-;",
    "P3O[33],Screensaver,On,Off;",
    "P3-;",
-   "P3O[38],Send inputs,Off,On;",
+   "P3O[39:38],Send PS2,Off,Keyboard,Keyboard & Mouse;",
+   "P3O[41:40],Send Joysticks,Off,Digital,Analog;",
    "-;",
    "J1,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9, Button 10;",        
    "J2,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9, Button 10;",        
@@ -253,9 +254,10 @@ wire        hps_frameskip = !hps_volatile_fb;
 wire        hps_audio = status[34];
 wire [1:0]  hps_audio_buffer = status[36:35];
 wire        hps_pwm = status[37];
-wire        hps_inputs = status[38];
+wire [1:0]  hps_kbd_inputs = status[39:38];
+wire [1:0]  hps_joy_inputs = status[41:40];
 
-wire [39:0] status;
+wire [42:0] status;
 wire [31:0] joy0;
 wire [31:0] joy1;
 
@@ -298,7 +300,8 @@ hps_ext hps_ext
         .hps_verbose(hps_verbose),
         .hps_blit(hps_blit),
         .hps_screensaver(hps_screensaver),
-        .hps_inputs(hps_inputs),
+        .hps_kbd_inputs(hps_kbd_inputs),
+        .hps_joy_inputs(hps_joy_inputs),
         .hps_audio(hps_audio),  
         .sound_rate(sound_rate),
         .sound_chan(sound_chan),

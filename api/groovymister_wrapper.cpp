@@ -195,19 +195,47 @@ MODULE_API_GMW void gmw_pollInputs(void)
 	}
 }
 
-MODULE_API_GMW void gmw_getInputs(gmw_fpgaInputs* inputs)
+MODULE_API_GMW void gmw_getJoyInputs(gmw_fpgaJoyInputs* joyInputs)
 {
 	if (gmw != NULL)
 	{
-		inputs->joyFrame = gmw->inputs.joyFrame;
-		inputs->joyOrder = gmw->inputs.joyOrder;
-		inputs->joy1 = gmw->inputs.joy1;
-		inputs->joy2 = gmw->inputs.joy2;
+		joyInputs->joyFrame     = gmw->joyInputs.joyFrame;
+		joyInputs->joyOrder     = gmw->joyInputs.joyOrder;
+		joyInputs->joy1         = gmw->joyInputs.joy1;
+		joyInputs->joy2         = gmw->joyInputs.joy2;
+		joyInputs->joy1LXAnalog = gmw->joyInputs.joy1LXAnalog; 	
+		joyInputs->joy1LYAnalog = gmw->joyInputs.joy1LYAnalog; 	
+		joyInputs->joy1RXAnalog = gmw->joyInputs.joy1RXAnalog; 	
+		joyInputs->joy1RYAnalog = gmw->joyInputs.joy1RYAnalog; 	
+		joyInputs->joy2LXAnalog = gmw->joyInputs.joy2LXAnalog; 	
+		joyInputs->joy2LYAnalog = gmw->joyInputs.joy2LYAnalog; 	
+		joyInputs->joy2RXAnalog = gmw->joyInputs.joy2RXAnalog; 	
+		joyInputs->joy2RYAnalog = gmw->joyInputs.joy2RYAnalog; 	
 	}
 	else
 	{
-		printf("[MiSTer] gmw_getInputs failed\n");
+		memset(&joyInputs, 0, sizeof(joyInputs));
+		printf("[MiSTer] gmw_getJoyInputs failed\n");
 	}
+}
+
+MODULE_API_GMW void gmw_getPS2Inputs(gmw_fpgaPS2Inputs* ps2Inputs)
+{
+	if (gmw != NULL)
+	{
+		ps2Inputs->ps2Frame  = gmw->ps2Inputs.ps2Frame;
+		ps2Inputs->ps2Order  = gmw->ps2Inputs.ps2Order;
+		memcpy(&ps2Inputs->ps2Keys, &gmw->ps2Inputs.ps2Keys, sizeof(ps2Inputs->ps2Keys));		   
+		ps2Inputs->ps2Mouse  = gmw->ps2Inputs.ps2Mouse;
+		ps2Inputs->ps2MouseX = gmw->ps2Inputs.ps2MouseX;
+		ps2Inputs->ps2MouseY = gmw->ps2Inputs.ps2MouseY;
+		ps2Inputs->ps2MouseZ = gmw->ps2Inputs.ps2MouseZ;
+	}
+	else
+	{
+		memset(&ps2Inputs, 0, sizeof(ps2Inputs));		
+		printf("[MiSTer] gmw_getPS2Inputs failed\n");
+	}	
 }
 
 MODULE_API_GMW const char* gmw_get_version()

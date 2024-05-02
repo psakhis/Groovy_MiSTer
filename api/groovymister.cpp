@@ -74,11 +74,27 @@ GroovyMister::GroovyMister()
 	fpga.audio = 0;
 	fpga.vramQueue = 0;
 
-	inputs.joyFrame = 0;
-	inputs.joyOrder = 0;
-	inputs.joy1 = 0;
-	inputs.joy2 = 0;
-
+	joyInputs.joyFrame = 0;
+	joyInputs.joyOrder = 0;
+	joyInputs.joy1 = 0;
+	joyInputs.joy2 = 0;
+	joyInputs.joy1LXAnalog = 0;
+	joyInputs.joy1LYAnalog = 0;
+	joyInputs.joy1RXAnalog = 0;
+	joyInputs.joy1RYAnalog = 0;
+	joyInputs.joy2LXAnalog = 0;
+	joyInputs.joy2LYAnalog = 0;
+	joyInputs.joy2RXAnalog = 0;
+	joyInputs.joy2RYAnalog = 0;
+	
+	ps2Inputs.ps2Frame = 0;
+	ps2Inputs.ps2Order = 0;
+	memset(&ps2Inputs.ps2Keys, 0, sizeof(ps2Inputs.ps2Keys));	
+	ps2Inputs.ps2Mouse = 0;
+	ps2Inputs.ps2MouseX = 0;
+	ps2Inputs.ps2MouseY = 0;
+	ps2Inputs.ps2MouseZ = 0;
+			
 	m_RGBSize = 0;
 	m_interlace = 0;
 	m_vTotal = 0;
@@ -675,20 +691,31 @@ void GroovyMister::BindInputs(const char* misterHost, uint16_t misterPort)
 
 void GroovyMister::PollInputs(void)
 {
-	uint32_t joyFrame = inputs.joyFrame;
-	uint8_t  joyOrder = inputs.joyOrder;
+	uint32_t joyFrame = joyInputs.joyFrame;
+	uint8_t  joyOrder = joyInputs.joyOrder;
+	uint32_t ps2Frame = ps2Inputs.ps2Frame;
+	uint8_t  ps2Order = ps2Inputs.ps2Order;
 	socklen_t sServerAddr = sizeof(struct sockaddr);
 	int len = 0;
 	do
 	{  	//Mednafen::MDFN_printf(_("GGGGGGGGGGGGGGGGGGGGGGGG...\n"));
-		len = recvfrom(m_sockInputsFD, m_bufferInputsReceive, sizeof(m_bufferInputsReceive), 0, (struct sockaddr *)&m_serverAddrInputs, &sServerAddr);		
-		if (len == 9) //blit joystick
+		len = recvfrom(m_sockInputsFD, m_bufferInputsReceive, sizeof(m_bufferInputsReceive), 0, (struct sockaddr *)&m_serverAddrInputs, &sServerAddr);			
+		if (len == 9 || len == 17) //blit joystick digital or analog
 		{
 			memcpy(&joyFrame, &m_bufferInputsReceive[0], 4);
 			memcpy(&joyOrder, &m_bufferInputsReceive[4], 1);
-			if (joyFrame > inputs.joyFrame || (joyFrame == inputs.joyFrame && joyOrder > inputs.joyOrder))
+			if (joyFrame > joyInputs.joyFrame || (joyFrame == joyInputs.joyFrame && joyOrder > joyInputs.joyOrder))
 			{
-				setFpgaJoystick();
+				setFpgaJoystick(len);
+			}
+		}
+		if (len == 37 || len == 41) //blit ps2 keyboard and mouse
+		{
+			memcpy(&ps2Frame, &m_bufferInputsReceive[0], 4);
+			memcpy(&ps2Order, &m_bufferInputsReceive[4], 1);
+			if (ps2Frame > ps2Inputs.ps2Frame || (ps2Frame == ps2Inputs.ps2Frame && ps2Order > ps2Inputs.ps2Order))
+			{
+				setFpgaPS2(len);
 			}
 		}
 	} while (len > 0);
@@ -873,13 +900,59 @@ void GroovyMister::setFpgaStatus(void)
 	LOG(2,"[MiSTer] ACK %d %d / %d %d / bits(%d%d%d%d%d%d%d%d)\n", fpga.frameEcho, fpga.vCountEcho, fpga.frame, fpga.vCount, fpga.vramReady, fpga.vramEndFrame, fpga.vramSynced, fpga.vgaFrameskip, fpga.vgaVblank, fpga.vgaF1, fpga.audio, fpga.vramQueue);
 }
 
-void GroovyMister::setFpgaJoystick(void)
+void GroovyMister::setFpgaJoystick(int len)
 {
-	memcpy(&inputs.joyFrame, &m_bufferInputsReceive[0], 4);
-	memcpy(&inputs.joyOrder, &m_bufferInputsReceive[4], 1);
-	memcpy(&inputs.joy1, &m_bufferInputsReceive[5], 2);
-	memcpy(&inputs.joy2, &m_bufferInputsReceive[7], 2);
+	memcpy(&joyInputs.joyFrame, &m_bufferInputsReceive[0], 4);
+	memcpy(&joyInputs.joyOrder, &m_bufferInputsReceive[4], 1);
+	memcpy(&joyInputs.joy1, &m_bufferInputsReceive[5], 2);
+	memcpy(&joyInputs.joy2, &m_bufferInputsReceive[7], 2);	
+	LOG(2,"[MiSTer] JOY %d %d / %d %d\n", joyInputs.joyFrame, joyInputs.joyOrder, joyInputs.joy1, joyInputs.joy2);
+	
+	if (len == 17)
+	{		
+		memcpy(&joyInputs.joy1LXAnalog, &m_bufferInputsReceive[9], 1);
+		memcpy(&joyInputs.joy1LYAnalog, &m_bufferInputsReceive[10], 1);
+		memcpy(&joyInputs.joy1RXAnalog, &m_bufferInputsReceive[11], 1);
+		memcpy(&joyInputs.joy1RYAnalog, &m_bufferInputsReceive[12], 1);
+		memcpy(&joyInputs.joy2LXAnalog, &m_bufferInputsReceive[13], 1);
+		memcpy(&joyInputs.joy2LYAnalog, &m_bufferInputsReceive[14], 1);
+		memcpy(&joyInputs.joy2RXAnalog, &m_bufferInputsReceive[15], 1);
+		memcpy(&joyInputs.joy2RYAnalog, &m_bufferInputsReceive[16], 1);
+		LOG(2,"[MiSTer] JOY A1(LX=%d,LY=%d,RX=%d,RY=%d) A2(LX=%d,LY=%d,RX=%d,RY=%d)\n", joyInputs.joy1LXAnalog, joyInputs.joy1LYAnalog, joyInputs.joy1RXAnalog, joyInputs.joy1RYAnalog, joyInputs.joy2LXAnalog, joyInputs.joy2LYAnalog, joyInputs.joy2RXAnalog, joyInputs.joy2RYAnalog);
+	}	
+}
 
-	LOG(2,"[MiSTer] JOY %d %d / %d %d\n", inputs.joyFrame, inputs.joyOrder, inputs.joy1, inputs.joy2);
+void GroovyMister::setFpgaPS2(int len)
+{
+	memcpy(&ps2Inputs.ps2Frame, &m_bufferInputsReceive[0], 4);
+	memcpy(&ps2Inputs.ps2Order, &m_bufferInputsReceive[4], 1);
+				
+	if (m_verbose == 2)
+	{
+		LOG(2,"[MiSTer] KBD %d %d ", ps2Inputs.ps2Frame, ps2Inputs.ps2Order);
+		for (int i=0; i<256; i++)
+		{
+			int bit_pre = 1 & (ps2Inputs.ps2Keys[i / 8] >> (i % 8));
+			char *pos = &m_bufferInputsReceive[5];
+			int bit_pos = 1 & (pos[i / 8] >> (i % 8));
+			if (bit_pre != bit_pos) 
+			{
+				LOG(2,"[%d=%d->%d]", i, bit_pre, bit_pos);
+			}	
+		}
+		LOG(2,"%s\n", "");
+	}			
+	memcpy(&ps2Inputs.ps2Keys, &m_bufferInputsReceive[5], 32);
+	
+	if (len == 41)
+	{		
+		memcpy(&ps2Inputs.ps2Mouse, &m_bufferInputsReceive[37], 1);
+		memcpy(&ps2Inputs.ps2MouseX, &m_bufferInputsReceive[38], 1);
+		memcpy(&ps2Inputs.ps2MouseY, &m_bufferInputsReceive[39], 1);
+		memcpy(&ps2Inputs.ps2MouseZ, &m_bufferInputsReceive[40], 1);
+		bitByte bits;
+		bits.byte = ps2Inputs.ps2Mouse;
+		LOG(0, "[MiSTer] MOUSE [yo=%d,xo=%d,ys=%d,xs=%d,1=%d,bm=%d,br=%d,bl=%d][x=%d,y=%d,z=%d]\n", bits.u.bit7, bits.u.bit6, bits.u.bit5, bits.u.bit4, bits.u.bit3, bits.u.bit2, bits.u.bit1, bits.u.bit0, ps2Inputs.ps2MouseX, ps2Inputs.ps2MouseY, ps2Inputs.ps2MouseZ);	
+	}	
 }
 

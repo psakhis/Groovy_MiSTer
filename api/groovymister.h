@@ -53,12 +53,30 @@ typedef struct fpgaStatus{
 	uint8_t vramQueue; 	//1-fpga has pixels prepared on vram
 } fpgaStatus;
 
-typedef struct fpgaInputs{
+typedef struct fpgaJoyInputs{
 	uint32_t joyFrame;	//joystick blit frame
 	uint8_t  joyOrder;	//joystick blit order
 	uint16_t joy1;	 	//joystick 1 map
 	uint16_t joy2;	 	//joystick 2 map
-} fpgaInputs;
+	char     joy1LXAnalog; 	//joystick 1 L-Analog X
+	char     joy1LYAnalog; 	//joystick 1 L-Analog Y
+	char     joy1RXAnalog; 	//joystick 1 R-Analog X
+	char     joy1RYAnalog; 	//joystick 1 R-Analog Y
+	char     joy2LXAnalog; 	//joystick 2 L-Analog X
+	char     joy2LYAnalog; 	//joystick 2 L-Analog Y
+	char     joy2RXAnalog; 	//joystick 2 R-Analog X
+	char     joy2RYAnalog; 	//joystick 2 R-Analog Y	
+} fpgaJoyInputs;
+
+typedef struct fpgaPS2Inputs{
+	uint32_t ps2Frame;	//ps2 blit frame
+	uint8_t  ps2Order;	//ps2 blit order
+	uint8_t  ps2Keys[32]; 	//bit array with sdl scancodes convention
+	uint8_t  ps2Mouse;	//byte 0 ps2 mouse [yo,xo,ys,xs,1,bm,br,bl]
+	uint8_t  ps2MouseX; 	//byte 1 ps2 mouse X
+	uint8_t  ps2MouseY; 	//byte 2 ps2 mouse Y
+	uint8_t  ps2MouseZ; 	//byte 3 ps2 mouse Z
+} fpgaPS2Inputs;
 
 typedef unsigned long DWORD;
 
@@ -66,10 +84,11 @@ class GroovyMister
 {
  public:
 
-	char *pBufferBlit; 	// This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
-	char *pBufferAudio; 	// This buffer are registered and aligned for sending audio. Populate it before CmdAudio
-	fpgaStatus fpga;	// Data with last received ACK
-	fpgaInputs inputs;      // Data with last inputs received
+	char *pBufferBlit; 	 // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
+	char *pBufferAudio; 	 // This buffer are registered and aligned for sending audio. Populate it before CmdAudio
+	fpgaStatus fpga; 	 // Data with last received ACK
+	fpgaJoyInputs joyInputs; // Data with last joystick inputs received
+	fpgaPS2Inputs ps2Inputs; // Data with last ps2 inputs received
 
 	GroovyMister();
 	~GroovyMister();
@@ -135,7 +154,7 @@ class GroovyMister
 	struct sockaddr_in m_serverAddrInputs;
 	char m_bufferSend[26];
 	char m_bufferReceive[13];
-	char m_bufferInputsReceive[9];
+	char m_bufferInputsReceive[41];
 	char *m_pBufferLZ4;
 	char *m_pBufferAudio;
 	uint8_t m_lz4Frames;
@@ -157,7 +176,8 @@ class GroovyMister
 	void setTimeEnd(void);
 	uint32_t DiffTime(void);
 	void setFpgaStatus(void);
-	void setFpgaJoystick(void);
+	void setFpgaJoystick(int len);
+	void setFpgaPS2(int len);
 };
 
 #endif

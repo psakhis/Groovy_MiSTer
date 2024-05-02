@@ -97,6 +97,267 @@ static FILE * fp = NULL;
                                 } \
                            } while (0)
 
+#define NUM_SCANCODES 255
+#define ARRAY_BIT_SIZE(x) (x/8+(!!(x%8)))
+static const int key2sdl[] =
+{
+	0,   //0   KEY_RESERVED
+	41,  //1   KEY_ESC
+	30,  //2   KEY_1
+	31,  //3   KEY_2
+	32,  //4   KEY_3
+	33,  //5   KEY_4
+	34,  //6   KEY_5
+	35,  //7   KEY_6
+	36,  //8   KEY_7
+	37,  //9   KEY_8
+	38,  //10  KEY_9
+	39,  //11  KEY_0
+	45,  //12  KEY_MINUS
+	46,  //13  KEY_EQUAL
+	42,  //14  KEY_BACKSPACE
+	43,  //15  KEY_TAB
+	20,  //16  KEY_Q
+	26,  //17  KEY_W
+	8,   //18  KEY_E
+	21,  //19  KEY_R
+	23,  //20  KEY_T
+	28,  //21  KEY_Y
+	24,  //22  KEY_U
+	12,  //23  KEY_I
+	18,  //24  KEY_O
+	19,  //25  KEY_P
+	184, //26  KEY_LEFTBRACE
+	184, //27  KEY_RIGHTBRACE
+	40,  //28  KEY_ENTER
+	224, //29  KEY_LEFTCTRL
+	4,   //30  KEY_A
+	22,  //31  KEY_S
+	7,   //32  KEY_D
+	9,   //33  KEY_F
+	10,  //34  KEY_G
+	11,  //35  KEY_H
+	13,  //36  KEY_J
+	14,  //37  KEY_K
+	15,  //38  KEY_L
+	51,  //39  KEY_SEMICOLON
+	52,  //40  KEY_APOSTROPHE
+	53,  //41  KEY_GRAVE
+	225, //42  KEY_LEFTSHIFT
+	49,  //43  KEY_BACKSLASH
+	28,  //44  KEY_Z
+	27,  //45  KEY_X
+	6,   //46  KEY_C
+	25,  //47  KEY_V
+	5,   //48  KEY_B
+	17,  //49  KEY_N
+	16,  //50  KEY_M
+	54,  //51  KEY_COMMA
+	55,  //52  KEY_DOT
+	56,  //53  KEY_SLASH
+	229, //54  KEY_RIGHTSHIFT
+	206, //55  KEY_KPASTERISK
+	226, //56  KEY_LEFTALT
+	44,  //57  KEY_SPACE
+	57,  //58  KEY_CAPSLOCK
+	58,  //59  KEY_F1
+	59,  //60  KEY_F2
+	60,  //61  KEY_F3
+	61,  //62  KEY_F4
+	62,  //63  KEY_F5
+	63,  //64  KEY_F6
+	64,  //65  KEY_F7
+	65,  //66  KEY_F8
+	66,  //67  KEY_F9
+	67,  //68  KEY_F10
+	83,  //69  KEY_NUMLOCK
+	71,  //70  KEY_SCROLLLOCK
+	95,  //71  KEY_KP7
+	96,  //72  KEY_KP8
+	97,  //73  KEY_KP9
+	86,  //74  KEY_KPMINUS
+	92,  //75  KEY_KP4
+	93,  //76  KEY_KP5
+	94,  //77  KEY_KP6
+	87,  //78  KEY_KPPLUS
+	89,  //79  KEY_KP1
+	90,  //80  KEY_KP2
+	91,  //81  KEY_KP3
+	98,  //82  KEY_KP0
+	99,  //83  KEY_KPDOT
+	0,   //84  ???
+	0,   //85  KEY_ZENKAKU
+	0,   //86  KEY_102ND
+	68,  //87  KEY_F11
+	69,  //88  KEY_F12
+	0,   //89  KEY_RO
+	0,   //90  KEY_KATAKANA
+	0,   //91  KEY_HIRAGANA
+	0,   //92  KEY_HENKAN
+	0,   //93  KEY_KATAKANA
+	0,   //94  KEY_MUHENKAN
+	0,   //95  KEY_KPJPCOMMA
+	88,  //96  KEY_KPENTER
+	228, //97  KEY_RIGHTCTRL
+	0,   //98  KEY_KPSLASH
+	0,   //99  KEY_SYSRQ
+	230, //100 KEY_RIGHTALT
+	0,   //101 KEY_LINEFEED
+	74,  //102 KEY_HOME
+	82,  //103 KEY_UP
+	75,  //104 KEY_PAGEUP
+	80,  //105 KEY_LEFT
+	79,  //106 KEY_RIGHT
+	77,  //107 KEY_END
+	81,  //108 KEY_DOWN
+	78,  //109 KEY_PAGEDOWN
+	73,  //110 KEY_INSERT
+	76,  //111 KEY_DELETE
+	0,   //112 KEY_MACRO
+	0,   //113 KEY_MUTE
+	0,   //114 KEY_VOLUMEDOWN
+	0,   //115 KEY_VOLUMEUP
+	0,   //116 KEY_POWER
+	0,   //117 KEY_KPEQUAL
+	0,   //118 KEY_KPPLUSMINUS
+	72,  //119 KEY_PAUSE
+	0,   //120 KEY_SCALE
+	0,   //121 KEY_KPCOMMA
+	0,   //122 KEY_HANGEUL
+	0,   //123 KEY_HANJA
+	0,   //124 KEY_YEN
+	0,   //125 KEY_LEFTMETA
+	0,   //126 KEY_RIGHTMETA
+	0,   //127 KEY_COMPOSE
+	0,   //128 KEY_STOP
+	0,   //129 KEY_AGAIN
+	0,   //130 KEY_PROPS
+	0,   //131 KEY_UNDO
+	0,   //132 KEY_FRONT
+	0,   //133 KEY_COPY
+	0,   //134 KEY_OPEN
+	0,   //135 KEY_PASTE
+	0,   //136 KEY_FIND
+	0,   //137 KEY_CUT
+	0,   //138 KEY_HELP
+	0,   //139 KEY_MENU
+	0,   //140 KEY_CALC
+	0,   //141 KEY_SETUP
+	0,   //142 KEY_SLEEP
+	0,   //143 KEY_WAKEUP
+	0,   //144 KEY_FILE
+	0,   //145 KEY_SENDFILE
+	0,   //146 KEY_DELETEFILE
+	0,   //147 KEY_XFER
+	0,   //148 KEY_PROG1
+	0,   //149 KEY_PROG2
+	0,   //150 KEY_WWW
+	0,   //151 KEY_MSDOS
+	0,   //152 KEY_SCREENLOCK
+	0,   //153 KEY_DIRECTION
+	0,   //154 KEY_CYCLEWINDOWS
+	0,   //155 KEY_MAIL
+	0,   //156 KEY_BOOKMARKS
+	0,   //157 KEY_COMPUTER
+	0,   //158 KEY_BACK
+	0,   //159 KEY_FORWARD
+	0,   //160 KEY_CLOSECD
+	0,   //161 KEY_EJECTCD
+	0,   //162 KEY_EJECTCLOSECD
+	0,   //163 KEY_NEXTSONG
+	0,   //164 KEY_PLAYPAUSE
+	0,   //165 KEY_PREVIOUSSONG
+	0,   //166 KEY_STOPCD
+	0,   //167 KEY_RECORD
+	0,   //168 KEY_REWIND
+	0,   //169 KEY_PHONE
+	0,   //170 KEY_ISO
+	0,   //171 KEY_CONFIG
+	0,   //172 KEY_HOMEPAGE
+	0,   //173 KEY_REFRESH
+	0,   //174 KEY_EXIT
+	0,   //175 KEY_MOVE
+	0,   //176 KEY_EDIT
+	0,   //177 KEY_SCROLLUP
+	0,   //178 KEY_SCROLLDOWN
+	0,   //179 KEY_KPLEFTPAREN
+	0,   //180 KEY_KPRIGHTPAREN
+	0,   //181 KEY_NEW
+	0,   //182 KEY_REDO
+	0,   //183 KEY_F13
+	0,   //184 KEY_F14
+	0,   //185 KEY_F15
+	0,   //186 KEY_F16
+	0,   //187 KEY_F17
+	0,   //188 KEY_F18
+	0,   //189 KEY_F19
+	0,   //190 KEY_F20
+	0,   //191 KEY_F21
+	0,   //192 KEY_F22
+	0,   //193 KEY_F23
+	49,  //194 U-mlaut on DE mapped to backslash
+	0,   //195 ???
+	0,   //196 ???
+	0,   //197 ???
+	0,   //198 ???
+	0,   //199 ???
+	0,   //200 KEY_PLAYCD
+	0,   //201 KEY_PAUSECD
+	0,   //202 KEY_PROG3
+	0,   //203 KEY_PROG4
+	0,   //204 KEY_DASHBOARD
+	0,   //205 KEY_SUSPEND
+	0,   //206 KEY_CLOSE
+	0,   //207 KEY_PLAY
+	0,   //208 KEY_FASTFORWARD
+	0,   //209 KEY_BASSBOOST
+	0,   //210 KEY_PRINT
+	0,   //211 KEY_HP
+	0,   //212 KEY_CAMERA
+	0,   //213 KEY_SOUND
+	0,   //214 KEY_QUESTION
+	0,   //215 KEY_EMAIL
+	0,   //216 KEY_CHAT
+	0,   //217 KEY_SEARCH
+	0,   //218 KEY_CONNECT
+	0,   //219 KEY_FINANCE
+	0,   //220 KEY_SPORT
+	0,   //221 KEY_SHOP
+	0,   //222 KEY_ALTERASE
+	0,   //223 KEY_CANCEL
+	0,   //224 KEY_BRIGHT_DOWN
+	0,   //225 KEY_BRIGHT_UP
+	0,   //226 KEY_MEDIA
+	0,   //227 KEY_SWITCHVIDEO
+	0,   //228 KEY_DILLUMTOGGLE
+	0,   //229 KEY_DILLUMDOWN
+	0,   //230 KEY_DILLUMUP
+	0,   //231 KEY_SEND
+	0,   //232 KEY_REPLY
+	0,   //233 KEY_FORWARDMAIL
+	0,   //234 KEY_SAVE
+	0,   //235 KEY_DOCUMENTS
+	0,   //236 KEY_BATTERY
+	0,   //237 KEY_BLUETOOTH
+	0,   //238 KEY_WLAN
+	0,   //239 KEY_UWB
+	0,   //240 KEY_UNKNOWN
+	0,   //241 KEY_VIDEO_NEXT
+	0,   //242 KEY_VIDEO_PREV
+	0,   //243 KEY_BRIGHT_CYCLE
+	0,   //244 KEY_BRIGHT_AUTO
+	0,   //245 KEY_DISPLAY_OFF
+	0,   //246 KEY_WWAN
+	0,   //247 KEY_RFKILL
+	0,   //248 KEY_MICMUTE
+	0,   //249 ???
+	0,   //250 ???
+	0,   //251 ???
+	0,   //252 ???
+	0,   //253 ???
+	0,   //254 ???
+	000  //255 ???
+};
 
 typedef union
 {
@@ -167,7 +428,25 @@ typedef struct {
    //joystick
    uint8_t   PoC_joystick_order;  
    uint32_t  PoC_joystick_map1;  
-   uint32_t  PoC_joystick_map2;  
+   uint32_t  PoC_joystick_map2;        
+   
+   char      PoC_joystick_l_analog_X1;  
+   char      PoC_joystick_l_analog_Y1;  
+   char      PoC_joystick_r_analog_X1;  
+   char      PoC_joystick_r_analog_Y1;  
+
+   char      PoC_joystick_l_analog_X2;  
+   char      PoC_joystick_l_analog_Y2;  
+   char      PoC_joystick_r_analog_X2;  
+   char      PoC_joystick_r_analog_Y2;  
+   
+   //ps2
+   uint8_t   PoC_ps2_order;  
+   uint8_t   PoC_ps2_keyboard_keys[ARRAY_BIT_SIZE(NUM_SCANCODES)]; //32 bytes   
+   uint8_t   PoC_ps2_mouse;
+   uint8_t   PoC_ps2_mouse_x;
+   uint8_t   PoC_ps2_mouse_y;
+   uint8_t   PoC_ps2_mouse_z;
                
 } PoC_type;
 
@@ -183,7 +462,7 @@ static struct sockaddr_in servaddr;
 static struct sockaddr_in clientaddr;
 static socklen_t clilen = sizeof(struct sockaddr); 
 static char recvbuf[65536] = { 0 };
-static char sendbuf[13];
+static char sendbuf[41];
 
 static int sockfdInputs;
 static struct sockaddr_in servaddrInputs;
@@ -212,7 +491,8 @@ static int isCorePriority = 0;
 static uint8_t hpsBlit = 0; 
 static uint16_t numBlit = 0;
 static uint8_t doScreensaver = 0;
-static uint8_t doInputs = 0;
+static uint8_t doPs2Inputs = 0;
+static uint8_t doJoyInputs = 0;
 static uint8_t isConnected = 0; 
 static uint8_t isConnectedInputs = 0; 
 
@@ -295,8 +575,16 @@ static void groovy_FPGA_hps()
     initVerboseFile();				 	
     hpsBlit = bits.u.bit2;			
     doScreensaver = !bits.u.bit3;
-    doInputs = bits.u.bit4;		
-    printf("doVerbose=%d hpsBlit=%d doScreenSaver=%d doInputs=%d\n", doVerbose, hpsBlit, doScreensaver, doInputs);	
+    
+    if (bits.u.bit4 == 1 && bits.u.bit5 == 0) doPs2Inputs = 1;
+    else if (bits.u.bit4 == 0 && bits.u.bit5 == 1) doPs2Inputs = 2;	
+    else doPs2Inputs = 0;
+    
+    if (bits.u.bit6 == 1 && bits.u.bit7 == 0) doJoyInputs = 1;
+    else if (bits.u.bit6 == 0 && bits.u.bit7 == 1) doJoyInputs = 2;	
+    else doJoyInputs = 0;
+    
+    printf("doVerbose=%d hpsBlit=%d doScreenSaver=%d doPs2Inputs=%d doJoyInputs=%d\n", doVerbose, hpsBlit, doScreensaver, doPs2Inputs, doJoyInputs);	
 }
 
 static void groovy_FPGA_status(uint8_t isACK)
@@ -695,7 +983,8 @@ static void setClose()
 	blitCompression = 0;		
 	free(poc);	
 	initDDR();	
-	isConnected = 0;		
+	isConnected = 0;	
+	isConnectedInputs = 0; 	
 	
 	// load LOGO
 	if (doScreensaver)
@@ -774,13 +1063,13 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 		isConnected = 1;		
 	}
 	
-	if (doInputs)
+	if (doPs2Inputs || doJoyInputs)
   	{
   		int len = recvfrom(sockfdInputs, recvbuf, 1, 0, (struct sockaddr *)&clientaddrInputs, &clilen);  			
   		if (len > 0)
   		{  						
 			getnameinfo((struct sockaddr *)&clientaddrInputs, clilen, hoststr, sizeof(hoststr), portstr, sizeof(portstr), NI_NUMERICHOST | NI_NUMERICSERV);
-			LOG(1,"[Inputs][%s:%s]\n", hoststr, portstr);		
+			LOG(1,"[Inputs][%s:%s]\n", hoststr, portstr);					
   			isConnectedInputs = 1;  			
   		}	
   	}
@@ -803,6 +1092,7 @@ static void setBlit(uint32_t udp_frame, uint32_t udp_lz4_size)
 	poc->PoC_buffer_offset = (blitCompression) ? (poc->PoC_field_lz4) ? LZ4_OFFSET_B : LZ4_OFFSET_A : (!poc->PoC_FB_progressive && poc->PoC_field) ? FIELD_OFFSET : 0;					
 	poc->PoC_field_lz4 = (blitCompression) ? !poc->PoC_field_lz4 : 0;
 	poc->PoC_joystick_order = 0;	
+	poc->PoC_ps2_order = 0;	
 	
 	isBlitting = 1;	
 	isCorePriority = 1;
@@ -1055,7 +1345,7 @@ static void groovy_start()
     	// UDP Server     	
 	groovy_udp_server_init();  
 	
-	if (doInputs)
+	if (doPs2Inputs || doJoyInputs)
 	{
 		groovy_udp_server_init_inputs();  
 	} 	  	  		    	    	    	           	    	    	    	    	    	        	    	
@@ -1266,8 +1556,55 @@ void groovy_poll()
    	              
 } 
 
-void groovy_send_keycode(unsigned char joystick, uint32_t map)
-{			
+static void groovy_send_joysticks()
+{	
+	int len = 9;		
+	sendbuf[0] = poc->PoC_frame_ddr & 0xff;
+	sendbuf[1] = poc->PoC_frame_ddr >> 8;	
+	sendbuf[2] = poc->PoC_frame_ddr >> 16;	
+	sendbuf[3] = poc->PoC_frame_ddr >> 24;	
+	sendbuf[4] = poc->PoC_joystick_order;
+	sendbuf[5] = poc->PoC_joystick_map1 & 0xff;
+	sendbuf[6] = poc->PoC_joystick_map1 >> 8;
+	sendbuf[7] = poc->PoC_joystick_map2 & 0xff;
+	sendbuf[8] = poc->PoC_joystick_map2 >> 8;	
+	if (doJoyInputs == 2)
+	{
+		sendbuf[9]  = poc->PoC_joystick_l_analog_X1;
+		sendbuf[10] = poc->PoC_joystick_l_analog_Y1;				
+		sendbuf[11] = poc->PoC_joystick_r_analog_X1;				
+		sendbuf[12] = poc->PoC_joystick_r_analog_Y1;
+		sendbuf[13] = poc->PoC_joystick_l_analog_X2;				
+		sendbuf[14] = poc->PoC_joystick_l_analog_Y2;				
+		sendbuf[15] = poc->PoC_joystick_r_analog_X2;				
+		sendbuf[16] = poc->PoC_joystick_r_analog_Y2;
+		len += 8;
+	}
+	sendto(sockfdInputs, sendbuf, len, MSG_CONFIRM, (struct sockaddr *)&clientaddrInputs, clilen);
+}
+
+static void groovy_send_ps2()
+{	
+	int len = 37;		
+	sendbuf[0] = poc->PoC_frame_ddr & 0xff;
+	sendbuf[1] = poc->PoC_frame_ddr >> 8;	
+	sendbuf[2] = poc->PoC_frame_ddr >> 16;	
+	sendbuf[3] = poc->PoC_frame_ddr >> 24;	
+	sendbuf[4] = poc->PoC_ps2_order;
+	memcpy(&sendbuf[5], &poc->PoC_ps2_keyboard_keys, 32);	
+	if (doPs2Inputs == 2)
+	{		
+		sendbuf[37] = poc->PoC_ps2_mouse;				
+		sendbuf[38] = poc->PoC_ps2_mouse_x;				
+		sendbuf[39] = poc->PoC_ps2_mouse_y;
+		sendbuf[40] = poc->PoC_ps2_mouse_z;						
+		len += 4;
+	}
+	sendto(sockfdInputs, sendbuf, len, MSG_CONFIRM, (struct sockaddr *)&clientaddrInputs, clilen);
+}
+
+void groovy_send_joystick(unsigned char joystick, uint32_t map)
+{				
 	poc->PoC_joystick_order++;
 	if (joystick == 0)
 	{
@@ -1278,21 +1615,9 @@ void groovy_send_keycode(unsigned char joystick, uint32_t map)
 		poc->PoC_joystick_map2 = map;
 	}
 		
-	if (isConnectedInputs)
+	if (isConnectedInputs && doJoyInputs)
 	{		
-		int flags = 0;	
-		flags |= MSG_CONFIRM;							
-		sendbuf[0] = poc->PoC_frame_ddr & 0xff;
-		sendbuf[1] = poc->PoC_frame_ddr >> 8;	
-		sendbuf[2] = poc->PoC_frame_ddr >> 16;	
-		sendbuf[3] = poc->PoC_frame_ddr >> 24;	
-		sendbuf[4] = poc->PoC_joystick_order;
-		sendbuf[5] = poc->PoC_joystick_map1 & 0xff;
-		sendbuf[6] = poc->PoC_joystick_map1 >> 8;
-		sendbuf[7] = poc->PoC_joystick_map2 & 0xff;
-		sendbuf[8] = poc->PoC_joystick_map2 >> 8;				
-		
-		sendto(sockfdInputs, sendbuf, 9, flags, (struct sockaddr *)&clientaddrInputs, clilen);	
+		groovy_send_joysticks();
 		LOG(2, "[JOY_ACK][%d][map=%d]\n", joystick, map);	
 	} 
 	else
@@ -1301,7 +1626,97 @@ void groovy_send_keycode(unsigned char joystick, uint32_t map)
 	}
 }
 
+void groovy_send_analog(unsigned char joystick, unsigned char analog, char valueX, char valueY)
+{	
+	poc->PoC_joystick_order++;
+	if (joystick == 0)
+	{
+		if (analog == 0)
+		{
+			poc->PoC_joystick_l_analog_X1 = valueX;
+			poc->PoC_joystick_l_analog_Y1 = valueY;
+		}
+		else
+		{
+			poc->PoC_joystick_r_analog_X1 = valueX;
+			poc->PoC_joystick_r_analog_Y1 = valueY;
+		}	
+	}
+	if (joystick == 1)
+	{
+		if (analog == 0)
+		{
+			poc->PoC_joystick_l_analog_X2 = valueX;
+			poc->PoC_joystick_l_analog_Y2 = valueY;
+		}
+		else
+		{
+			poc->PoC_joystick_r_analog_X2 = valueX;
+			poc->PoC_joystick_r_analog_Y2 = valueY;
+		}	
+	}
+	
+	if (isConnectedInputs && doJoyInputs == 2)
+	{		
+		groovy_send_joysticks();
+		LOG(2, "[JOY_%s_ACK][%d][x=%d,y=%d]\n", (analog) ? "R" : "L", joystick, valueX, valueY);	
+	} 
+	else
+	{
+		LOG(2, "[JOY_%s][%d][x=%d,y=%d]\n", (analog) ? "R" : "L", joystick, valueX, valueY);	
+	}			
+}
 
+void groovy_send_keyboard(uint16_t key, int press)
+{
+	poc->PoC_ps2_order++;
+	int index = key2sdl[key];
+	int bit = 1 & (poc->PoC_ps2_keyboard_keys[index / 8] >> (index % 8));
+	if (bit)
+	{
+		if (!press)
+		{
+			poc->PoC_ps2_keyboard_keys[index / 8] ^= 1 << (index % 8);
+		}
+	}	
+	else
+	{
+		if (press)
+		{
+			poc->PoC_ps2_keyboard_keys[index / 8] ^= 1 << (index % 8);
+		}
+	}
+		
+	if (isConnectedInputs && doPs2Inputs)
+	{
+		groovy_send_ps2();
+		LOG(2, "[KBD_ACK][key=%d sdl=%d (%d->%d)]\n", key, index, bit, press);
+	}
+	else
+	{
+		LOG(2, "[KBD][key=%d sdl=%d (%d->%d)]\n", key, index, bit, press);
+	}
+}
+
+void groovy_send_mouse(unsigned char ps2, unsigned char x, unsigned char y, unsigned char z)
+{
+	bitByte bits;
+	bits.byte = ps2;
+	poc->PoC_ps2_order++;
+	poc->PoC_ps2_mouse = ps2;
+	poc->PoC_ps2_mouse_x = x;
+	poc->PoC_ps2_mouse_y = y;
+	poc->PoC_ps2_mouse_z = z;
+	if (isConnectedInputs && doPs2Inputs == 2)
+	{
+		groovy_send_ps2();
+		LOG(2, "[MIC_ACK][yo=%d,xo=%d,ys=%d,xs=%d,1=%d,bm=%d,br=%d,bl=%d][x=%d,y=%d,z=%d]\n", bits.u.bit7, bits.u.bit6, bits.u.bit5, bits.u.bit4, bits.u.bit3, bits.u.bit2, bits.u.bit1, bits.u.bit0, x , y , z);	
+	}
+	else
+	{
+		LOG(2, "[MIC][yo=%d,xo=%d,ys=%d,xs=%d,1=%d,bm=%d,br=%d,bl=%d][x=%d,y=%d,z=%d]\n", bits.u.bit7, bits.u.bit6, bits.u.bit5, bits.u.bit4, bits.u.bit3, bits.u.bit2, bits.u.bit1, bits.u.bit0, x , y , z);	
+	}	
+}	
 
 
 

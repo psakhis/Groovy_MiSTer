@@ -27,7 +27,8 @@ module hps_ext
     input      [1:0]  hps_verbose,  
     input             hps_blit,     
     input             hps_screensaver,      
-    input             hps_inputs,      
+    input      [1:0]  hps_kbd_inputs,      
+    input      [1:0]  hps_joy_inputs,      
     input             hps_audio,
     output reg [1:0]  sound_rate = 0,
     output reg [1:0]  sound_chan = 0,
@@ -229,7 +230,7 @@ always@(posedge clk_sys) begin
                                         endcase
                                                 
                                GET_GROOVY_HPS: case(byte_cnt)
-                                                 1: io_dout <= {11'd0, hps_inputs, hps_screensaver, hps_blit, hps_verbose};                                                                                                 
+                                                 1: io_dout <= {8'd0, hps_joy_inputs, hps_kbd_inputs, hps_screensaver, hps_blit, hps_verbose};                                                                                                 
                                                endcase                                 
                                                 
                                SET_INIT: case(byte_cnt)
