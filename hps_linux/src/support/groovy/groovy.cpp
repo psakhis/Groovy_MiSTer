@@ -77,6 +77,7 @@
 #define CMD_BLIT_VSYNC 6
 
 #define LOGO_TIMER 16
+#define KEEP_ALIVE_FRAMES 45 * 60
 
 //https://stackoverflow.com/questions/64318331/how-to-print-logs-on-both-console-and-file-in-c-language
 #define LOG_TIMER 25
@@ -426,6 +427,7 @@ typedef struct {
    uint8_t  PoC_field_lz4; 
    
    //joystick
+   uint32_t  PoC_joystick_keep_alive; 
    uint8_t   PoC_joystick_order;  
    uint32_t  PoC_joystick_map1;  
    uint32_t  PoC_joystick_map2;        
@@ -441,6 +443,7 @@ typedef struct {
    char      PoC_joystick_r_analog_Y2;  
    
    //ps2
+   uint32_t  PoC_ps2_keep_alive;
    uint8_t   PoC_ps2_order;  
    uint8_t   PoC_ps2_keyboard_keys[ARRAY_BIT_SIZE(NUM_SCANCODES)]; //32 bytes   
    uint8_t   PoC_ps2_mouse;
@@ -998,6 +1001,55 @@ static void setClose()
 	
 }
 
+static void groovy_send_joysticks()
+{	
+	int len = 9;		
+	sendbuf[0] = poc->PoC_frame_ddr & 0xff;
+	sendbuf[1] = poc->PoC_frame_ddr >> 8;	
+	sendbuf[2] = poc->PoC_frame_ddr >> 16;	
+	sendbuf[3] = poc->PoC_frame_ddr >> 24;	
+	sendbuf[4] = poc->PoC_joystick_order;
+	sendbuf[5] = poc->PoC_joystick_map1 & 0xff;
+	sendbuf[6] = poc->PoC_joystick_map1 >> 8;
+	sendbuf[7] = poc->PoC_joystick_map2 & 0xff;
+	sendbuf[8] = poc->PoC_joystick_map2 >> 8;	
+	if (doJoyInputs == 2)
+	{
+		sendbuf[9]  = poc->PoC_joystick_l_analog_X1;
+		sendbuf[10] = poc->PoC_joystick_l_analog_Y1;				
+		sendbuf[11] = poc->PoC_joystick_r_analog_X1;				
+		sendbuf[12] = poc->PoC_joystick_r_analog_Y1;
+		sendbuf[13] = poc->PoC_joystick_l_analog_X2;				
+		sendbuf[14] = poc->PoC_joystick_l_analog_Y2;				
+		sendbuf[15] = poc->PoC_joystick_r_analog_X2;				
+		sendbuf[16] = poc->PoC_joystick_r_analog_Y2;
+		len += 8;
+	}
+	sendto(sockfdInputs, sendbuf, len, MSG_CONFIRM, (struct sockaddr *)&clientaddrInputs, clilen);
+	poc->PoC_joystick_keep_alive = 0;
+}
+
+static void groovy_send_ps2()
+{	
+	int len = 37;		
+	sendbuf[0] = poc->PoC_frame_ddr & 0xff;
+	sendbuf[1] = poc->PoC_frame_ddr >> 8;	
+	sendbuf[2] = poc->PoC_frame_ddr >> 16;	
+	sendbuf[3] = poc->PoC_frame_ddr >> 24;	
+	sendbuf[4] = poc->PoC_ps2_order;
+	memcpy(&sendbuf[5], &poc->PoC_ps2_keyboard_keys, 32);	
+	if (doPs2Inputs == 2)
+	{		
+		sendbuf[37] = poc->PoC_ps2_mouse;				
+		sendbuf[38] = poc->PoC_ps2_mouse_x;				
+		sendbuf[39] = poc->PoC_ps2_mouse_y;
+		sendbuf[40] = poc->PoC_ps2_mouse_z;						
+		len += 4;
+	}
+	sendto(sockfdInputs, sendbuf, len, MSG_CONFIRM, (struct sockaddr *)&clientaddrInputs, clilen);
+	poc->PoC_ps2_keep_alive = 0;
+}
+
 static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 {          	
 	LOG(2, "[ACK_%s]\n", "STATUS");	
@@ -1031,7 +1083,19 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 	bits.u.bit7 = (fpga_vram_queue > 0) ? 1 : 0;
 	sendbuf[12] = bits.byte;
 			
-	sendto(sockfd, sendbuf, 13, flags, (struct sockaddr *)&clientaddr, clilen);																
+	sendto(sockfd, sendbuf, 13, flags, (struct sockaddr *)&clientaddr, clilen);	
+	
+	if (poc->PoC_joystick_keep_alive >= KEEP_ALIVE_FRAMES)
+	{
+		LOG(2, "[JOY_ACK][%s]\n", "KEEP_ALIVE");	
+		groovy_send_joysticks();
+	}															
+	
+	if (poc->PoC_ps2_keep_alive >= KEEP_ALIVE_FRAMES)
+	{
+		LOG(2, "[KBD_ACK][%s]\n", "KEEP_ALIVE");
+		groovy_send_ps2();		
+	}															
 }
 
 static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan, uint8_t rgb_mode)
@@ -1091,8 +1155,18 @@ static void setBlit(uint32_t udp_frame, uint32_t udp_lz4_size)
 	poc->PoC_field = (!poc->PoC_FB_progressive) ? (poc->PoC_frame_recv + poc->PoC_field_frame) % 2 : 0; 
 	poc->PoC_buffer_offset = (blitCompression) ? (poc->PoC_field_lz4) ? LZ4_OFFSET_B : LZ4_OFFSET_A : (!poc->PoC_FB_progressive && poc->PoC_field) ? FIELD_OFFSET : 0;					
 	poc->PoC_field_lz4 = (blitCompression) ? !poc->PoC_field_lz4 : 0;
-	poc->PoC_joystick_order = 0;	
+	poc->PoC_joystick_order = 0;		
 	poc->PoC_ps2_order = 0;	
+	
+	if (isConnectedInputs && doJoyInputs)
+	{
+		poc->PoC_joystick_keep_alive++;	
+	}
+
+	if (isConnectedInputs && doPs2Inputs)
+	{
+		poc->PoC_ps2_keep_alive++;	
+	}
 	
 	isBlitting = 1;	
 	isCorePriority = 1;
@@ -1555,53 +1629,6 @@ void groovy_poll()
    	   	    	
    	              
 } 
-
-static void groovy_send_joysticks()
-{	
-	int len = 9;		
-	sendbuf[0] = poc->PoC_frame_ddr & 0xff;
-	sendbuf[1] = poc->PoC_frame_ddr >> 8;	
-	sendbuf[2] = poc->PoC_frame_ddr >> 16;	
-	sendbuf[3] = poc->PoC_frame_ddr >> 24;	
-	sendbuf[4] = poc->PoC_joystick_order;
-	sendbuf[5] = poc->PoC_joystick_map1 & 0xff;
-	sendbuf[6] = poc->PoC_joystick_map1 >> 8;
-	sendbuf[7] = poc->PoC_joystick_map2 & 0xff;
-	sendbuf[8] = poc->PoC_joystick_map2 >> 8;	
-	if (doJoyInputs == 2)
-	{
-		sendbuf[9]  = poc->PoC_joystick_l_analog_X1;
-		sendbuf[10] = poc->PoC_joystick_l_analog_Y1;				
-		sendbuf[11] = poc->PoC_joystick_r_analog_X1;				
-		sendbuf[12] = poc->PoC_joystick_r_analog_Y1;
-		sendbuf[13] = poc->PoC_joystick_l_analog_X2;				
-		sendbuf[14] = poc->PoC_joystick_l_analog_Y2;				
-		sendbuf[15] = poc->PoC_joystick_r_analog_X2;				
-		sendbuf[16] = poc->PoC_joystick_r_analog_Y2;
-		len += 8;
-	}
-	sendto(sockfdInputs, sendbuf, len, MSG_CONFIRM, (struct sockaddr *)&clientaddrInputs, clilen);
-}
-
-static void groovy_send_ps2()
-{	
-	int len = 37;		
-	sendbuf[0] = poc->PoC_frame_ddr & 0xff;
-	sendbuf[1] = poc->PoC_frame_ddr >> 8;	
-	sendbuf[2] = poc->PoC_frame_ddr >> 16;	
-	sendbuf[3] = poc->PoC_frame_ddr >> 24;	
-	sendbuf[4] = poc->PoC_ps2_order;
-	memcpy(&sendbuf[5], &poc->PoC_ps2_keyboard_keys, 32);	
-	if (doPs2Inputs == 2)
-	{		
-		sendbuf[37] = poc->PoC_ps2_mouse;				
-		sendbuf[38] = poc->PoC_ps2_mouse_x;				
-		sendbuf[39] = poc->PoC_ps2_mouse_y;
-		sendbuf[40] = poc->PoC_ps2_mouse_z;						
-		len += 4;
-	}
-	sendto(sockfdInputs, sendbuf, len, MSG_CONFIRM, (struct sockaddr *)&clientaddrInputs, clilen);
-}
 
 void groovy_send_joystick(unsigned char joystick, uint32_t map)
 {				
