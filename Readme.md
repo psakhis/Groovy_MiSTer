@@ -78,6 +78,7 @@ for src details, see Retroarch fork by @Calamity. https://github.com/antoniogine
     mister_lz4 = "3" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
     crt_switch_resolution = "4" (switchres.ini custom file)
     crt_switch_resolution_super = "0"
+    aspect_ratio_index = "22" (core provided)
     video_mister_enable = "true"
     video_vsync = "false"
     mister_scanlines = "true" 
