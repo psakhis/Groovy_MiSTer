@@ -29,6 +29,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 - (20240401) GroovyMame and Mednafen joysticks from mister
 - (20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
 - (20240502) Mednafen support for analog joysticks, keyboard and mouse
+- (20240616) New option jumbo frames on core. Tested on retroarch (mister_mtu = "3800"). Enable jumbo frames on pc side it's requiered.
 
 To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
   
