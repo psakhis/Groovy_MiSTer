@@ -1,6 +1,7 @@
 
 /* UDP server */
 #include <stdlib.h>
+#include <cerrno>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -18,6 +19,11 @@
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <signal.h>
+
+#include <linux/filter.h>
+#include <sys/mman.h>
+#include <net/ethernet.h> /* the L2 protocols */
+#include <poll.h>
 
 #include <sys/time.h> 
 #include <sys/stat.h>
@@ -75,6 +81,13 @@
 #define CMD_AUDIO 4
 #define CMD_GET_STATUS 5
 #define CMD_BLIT_VSYNC 6
+
+// PF_PACKETv3 RX RING
+/*
+#define BLOCKSIZ (1 << 12)  // 4096 bytes
+#define FRAMESIZ (1 << 11)  // 2048 bytes
+#define BLOCKNUM 200 
+*/
 
 #define LOGO_TIMER 16
 #define KEEP_ALIVE_FRAMES 45 * 60
@@ -458,6 +471,23 @@ union {
     uint64_t i;
 } u;
 
+
+/* PF_PACKETv3 variables */
+/*
+static int sockfd3;
+static struct iovec* rd = { 0 };
+static uint16_t current_block_num = 0;
+static struct pollfd pfd = { 0 };
+
+struct block_desc {
+    uint32_t version;
+    uint32_t offset_to_priv;
+    struct tpacket_hdr_v1 h1;
+};
+*/
+/* AF_XDP */
+//static int sockfd_xdp;
+
 /* General Server variables */
 static int groovyServer = 0;
 static int sockfd;
@@ -496,6 +526,7 @@ static uint16_t numBlit = 0;
 static uint8_t doScreensaver = 0;
 static uint8_t doPs2Inputs = 0;
 static uint8_t doJoyInputs = 0;
+static uint8_t doJumboFrames = 0;
 static uint8_t isConnected = 0; 
 static uint8_t isConnectedInputs = 0; 
 
@@ -587,7 +618,10 @@ static void groovy_FPGA_hps()
     else if (bits.u.bit6 == 0 && bits.u.bit7 == 1) doJoyInputs = 2;	
     else doJoyInputs = 0;
     
-    printf("doVerbose=%d hpsBlit=%d doScreenSaver=%d doPs2Inputs=%d doJoyInputs=%d\n", doVerbose, hpsBlit, doScreensaver, doPs2Inputs, doJoyInputs);	
+    bits.byte = (uint8_t) ((hps & 0xFF00) >> 8);
+    doJumboFrames = bits.u.bit0;
+    
+    LOG(0, "[HPS][doVerbose=%d hpsBlit=%d doScreenSaver=%d doPs2Inputs=%d doJoyInputs=%d doJumboFrames=%d]\n", doVerbose, hpsBlit, doScreensaver, doPs2Inputs, doJoyInputs, doJumboFrames);	
 }
 
 static void groovy_FPGA_status(uint8_t isACK)
@@ -1172,15 +1206,23 @@ static void setBlit(uint32_t udp_frame, uint32_t udp_lz4_size)
 	isCorePriority = 1;
 	numBlit = 0;	
 	
-	if (blitCompression)
+	if (!hpsBlit) //ASAP fpga starts to poll ddr
 	{
-		groovy_FPGA_blit_lz4(0, 0); 	
-	}	
+		if (blitCompression)
+		{
+			groovy_FPGA_blit_lz4(0, 0); 	
+		}	
+		else
+		{
+			groovy_FPGA_blit(0, 0);
+		}
+	} 
 	else
 	{
-		groovy_FPGA_blit(0, 0);
+		poc->PoC_pixels_ddr = 0;
+		poc->PoC_bytes_lz4_ddr = 0;
 	}
-					
+				
 	if (doVerbose > 0 && doVerbose < 3)
 	{
 		groovy_FPGA_status(0);
@@ -1304,61 +1346,482 @@ static void groovy_map_ddr()
     	isBlitting = 0;	    	
 }
 
-static void groovy_udp_server_init()
-{
-	LOG(1, "[UDP][SERVER][%s]\n", "START");
+   
+
+/*    pf_packetv   */     
+
+/*
+
+static void flush_block(struct block_desc *pbd) {
+    pbd->h1.block_status = TP_STATUS_KERNEL;
+}
+
+    uint32_t received_packets = 0;
+    uint32_t received_bytes = 0;
+    
+static int walk_block(struct block_desc *pbd, const int block_num) {
 	
-	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);				
-    	if (sockfd < 0)
+    int num_pkts = pbd->h1.num_pkts, i;
+    unsigned long bytes = 0;
+    struct tpacket3_hdr *ppd;
+    struct ethhdr *eth;
+    struct iphdr *ip;
+    struct udphdr *udp;
+    
+    ppd = (struct tpacket3_hdr *) ((uint8_t *) pbd + pbd->h1.offset_to_first_pkt);
+    eth = (struct ethhdr *) ((uint8_t *)ppd + ppd->tp_mac);
+    ip = (struct iphdr *) ((uint8_t *) eth + ETH_HLEN);
+    udp = (struct udphdr *) (((char *)ip ) + sizeof(struct iphdr));
+    char sbuff[NI_MAXHOST], dbuff[NI_MAXHOST];
+    
+   // int iphdrlen = ip->ihl * 4;
+   
+    if (eth->h_proto == htons(ETH_P_IP) && ntohs(udp->dest) == UDP_PORT)   
+    {
+	struct sockaddr_in ss, sd ;
+
+ 	memset(&ss, 0, sizeof (ss));
+ 	ss.sin_family = PF_INET;
+	ss.sin_addr.s_addr = ip->saddr;
+ 	getnameinfo((struct sockaddr *)&ss, sizeof(ss), sbuff, sizeof(sbuff), NULL, 0, NI_NUMERICHOST);
+
+	memset(&sd, 0, sizeof(sd));
+ 	sd.sin_family = PF_INET;
+ 	sd.sin_addr.s_addr = ip->daddr;
+ 	getnameinfo((struct sockaddr *)&sd, sizeof(sd), dbuff, sizeof(dbuff), NULL, 0, NI_NUMERICHOST);
+ 	
+ 	//printf("block %d, packets %d --> HOST %s ADDR %s port (%d->%d), payload len %d\n",block_num, num_pkts, sbuff, dbuff, ntohs(udp->source), ntohs(udp->dest), ntohs(udp->len) - sizeof(struct udphdr));	
+ 	
+    }   
+    else
+    {
+    	return 0;
+    }
+  //    printf("sizes %d %d %d %d\n", sizeof(struct ethhdr), iphdrlen, sizeof(struct udphdr));
+  //  int header_size =  sizeof(struct ethhdr) + iphdrlen + sizeof(udp);
+  
+ 
+    for (i = 0; i < num_pkts; ++i) {
+        bytes += ppd->tp_snaplen;               
+        eth = (struct ethhdr *) ((uint8_t *) ppd + ppd->tp_mac);
+        char* data_pointer = (char*)((uint8_t *) ppd + ppd->tp_mac);
+        ip = (struct iphdr *) ((uint8_t *) eth + ETH_HLEN);
+        udp = (struct udphdr *) (((char *)ip ) + sizeof(struct iphdr));
+      //  printf("packet %d, bytes %d payload udplen %d, byte 42=%d\n",i, ppd->tp_snaplen, ntohs(udp->len) - sizeof(struct udphdr), data_pointer[42]);      
+      
+        if (isBlitting == 1 && (ntohs(udp->len) - sizeof(struct udphdr)) <= 1472) {
+        	memcpy(&recvbuf[0],&data_pointer[42],(ntohs(udp->len) - sizeof(struct udphdr))); 
+        	if (received_packets > 1) {
+        		gettimeofday(&blitStop, NULL); 
+    			int difBlit = ((blitStop.tv_sec - blitStart.tv_sec) * 1000000 + blitStop.tv_usec - blitStart.tv_usec);
+    			LOG(0, "[TOTAL %06.3f][Bytes=%d, %d]\n",(double) difBlit/1000, received_bytes, received_packets); 
+    		}
+    		received_bytes += (ntohs(udp->len) - sizeof(struct udphdr));    		
+    		received_packets ++;
+	    	 
+	    	if ((ntohs(udp->len) - sizeof(struct udphdr)) < 1472) {
+	    		isBlitting = 0;
+	    	}
+	    	
+        }
+        
+        if (isBlitting == 0 && ((ntohs(udp->len) - sizeof(struct udphdr)) == 7 || (ntohs(udp->len) - sizeof(struct udphdr)) == 11)) {
+        	gettimeofday(&blitStart, NULL);     
+        	isBlitting = 1;
+        	received_packets = 0 ;
+        	received_bytes = 0;
+        } 
+      
+        
+        ppd = (struct tpacket3_hdr *) ((uint8_t *) ppd + ppd->tp_next_offset);                           
+    
+
+   
+}
+   
+    //printf("packets %d, bytes %d \n", num_pkts, bytes);
+   // gettimeofday(&blitStop, NULL); 
+   // int difBlit = ((blitStop.tv_sec - blitStart.tv_sec) * 1000000 + blitStop.tv_usec - blitStart.tv_usec);
+   // LOG(0, "[TOTAL %06.3f][Bytes=%d (%d)]\n",(double) difBlit/1000, bytes, num_pkts); 
+   return 1;
+}
+
+static void groovy_udp_server_init3()
+{
+	LOG(1, "[UDP][SERVER][START][%s]\n", "V3");
+
+	//setup PF_PACKETv3				
+	sockfd3 = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+	if (sockfd3 < 0)
     	{
     		printf("socket error\n");       		
-    	}    	    				    	        	
-	        		    
-    	memset(&servaddr, 0, sizeof(servaddr));
-    	servaddr.sin_family = AF_INET;
-    	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    	servaddr.sin_port = htons(UDP_PORT);
-    	  	
-        // Non blocking socket                                                                                                     
+    	}    
+    	
+    	int v = TPACKET_V3;	
+    	if (setsockopt(sockfd3, SOL_PACKET, PACKET_VERSION, &v, sizeof(v)) < 0)
+        {
+                printf("packet_version error\n");                
+        }    
+        
+        // Non blocking socket                                                                                                             
     	int flags;
-    	flags = fcntl(sockfd, F_GETFD, 0);    	
+    	flags = fcntl(sockfd3, F_GETFD, 0);    	
     	if (flags < 0) 
     	{
       		printf("get falg error\n");       		
     	}
     	flags |= O_NONBLOCK;
-    	if (fcntl(sockfd, F_SETFL, flags) < 0) 
+    	if (fcntl(sockfd3, F_SETFL, flags) < 0) 
     	{
        		printf("set nonblock fail\n");       		
     	}   	
-    	    		     	    	        	 	    		    	    		
+    	  	
+        
+    	//index of eth0
+        struct sockaddr_ll sll;
+        struct ifreq ifr;
+        memset(&sll, 0, sizeof(sll));
+        memset(&ifr, 0, sizeof(ifr));        
+        strncpy((char *)ifr.ifr_name, "eth0", IFNAMSIZ);
+        if((ioctl(sockfd3, SIOCGIFINDEX, &ifr)) < 0)
+        {     
+        	printf("Error getting Interface hw address!\n");     
+        }
+       
+	// promiscue mode       
+        struct packet_mreq mreq;    
+        memset(&mreq, 0, sizeof(mreq));  
+        mreq.mr_ifindex = ifr.ifr_ifindex;
+        mreq.mr_type = PACKET_MR_PROMISC;
+    	if (setsockopt(sockfd3, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+        {
+        	printf("error promiscue mode \n");
+        }    	    	     	 	        	    	     	    	
+        
+        // filter udp traffic
+        struct sock_fprog prog;
+        struct sock_filter filter[] = {
+            { BPF_LD + BPF_H + BPF_ABS,  0, 0,     12 },
+            { BPF_JMP + BPF_JEQ + BPF_K, 0, 1,  0x800 },
+            { BPF_LD + BPF_B + BPF_ABS,  0, 0,     23 },
+            { BPF_JMP + BPF_JEQ + BPF_K, 0, 1,   0x11 },
+            { BPF_RET + BPF_K,           0, 0, 0xffff },
+            { BPF_RET + BPF_K,           0, 0, 0x0000 },
+        };
+
+        prog.len = sizeof(filter)/sizeof(filter[0]);
+        prog.filter = filter;
+
+        if (setsockopt(sockfd3, SOL_SOCKET, SO_ATTACH_FILTER, &prog, sizeof(prog)) != 0)
+        {
+        	printf("Error filter udp\n");   
+        }
+       
+        int busyPoll = 50;
+	if (setsockopt(sockfd3, SOL_SOCKET, SO_BUSY_POLL, (void*)&busyPoll,sizeof(busyPoll)) < 0)
+	{
+        	printf("Error so_busy_poll\n");        	
+        }   
+
+#define SO_PREFER_BUSY_POLL     69
+#define SO_BUSY_POLL_BUDGET     70
+        
+        int preferBusyPoll = 1;
+	if (setsockopt(sockfd3, SOL_SOCKET, SO_PREFER_BUSY_POLL, (void*)&preferBusyPoll,sizeof(preferBusyPoll)) < 0)
+	{
+        	printf("Error so_prefer_busy_poll\n");        	
+        }   
+
+   	int busyPollBudget = 600;
+	if (setsockopt(sockfd3, SOL_SOCKET, SO_BUSY_POLL_BUDGET, (void*)&busyPollBudget,sizeof(busyPollBudget)) < 0)
+	{
+        	printf("Error so_busy_poll_budget\n");        	
+        }  
+                
+        // kernel to export data through mmap() rings
+        struct tpacket_req3 tp;  
+        memset(&tp, 0, sizeof(tp));	
+  	tp.tp_block_size = BLOCKSIZ;
+    	tp.tp_frame_size = FRAMESIZ;
+    	tp.tp_block_nr = BLOCKNUM;
+    	tp.tp_frame_nr = (BLOCKSIZ * BLOCKNUM) / FRAMESIZ;
+    	tp.tp_retire_blk_tov = 1; // Timeout in msec (0 is block full)
+    	tp.tp_feature_req_word = TP_FT_REQ_FILL_RXHASH;
+	
+	if (setsockopt(sockfd3, SOL_PACKET, PACKET_RX_RING, (void *) &tp, sizeof(tp)) < 0)    	
+    	{
+    		printf("packet_rx_ring error\n");
+    	}
+    	
+    //	if (setsockopt(sockfd3, SOL_PACKET, PACKET_TX_RING, (void *) &tp, sizeof(tp)) < 0)
+   // 	{
+    //		printf("packet_tx_ring error\n");
+    	//}
+    	    	
+        static uint8_t* rx_ring_buffer = NULL;               
+    	rx_ring_buffer = (uint8_t *) mmap(NULL, tp.tp_block_size * tp.tp_block_nr, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_LOCKED, sockfd3, 0);
+        if (rx_ring_buffer == MAP_FAILED) {
+                printf("error rx_ring_buffer mmap\n");                
+        };
+        
+        // allocate iov structure for each block
+    	rd = (struct iovec*)malloc(tp.tp_block_nr * sizeof(struct iovec));    	
+    	// initilize iov structures
+    	for (uint8_t i = 0; i < tp.tp_block_nr; ++i) {
+        	rd[i].iov_base = rx_ring_buffer + (i * tp.tp_block_size);
+        	rd[i].iov_len = tp.tp_block_size;
+    	}
+                       
+        // fill sockaddr_ll struct to prepare binding 
+   	sll.sll_family = AF_PACKET;
+   	sll.sll_protocol = htons(ETH_P_IP);
+   	sll.sll_ifindex =  ifr.ifr_ifindex;        	
+   	if (bind(sockfd3, (struct sockaddr *)&sll, sizeof(struct sockaddr_ll)) != 0)
+   	{
+   		printf("Error binding\n");    
+   	}
+   	       	
+    	memset(&pfd, 0, sizeof(pfd));
+    	pfd.fd = sockfd3;
+    	pfd.events = POLLIN | POLLRDNORM | POLLERR;
+    	pfd.revents = 0;   	   	                              	
+        
+        current_block_num = 0;
+        
+    	while (1)
+    	{
+    		 struct block_desc *pbd = (struct block_desc *) rd[current_block_num].iov_base;
+		   		
+    		 if ((pbd->h1.block_status & TP_STATUS_USER) == 0) {       		    		    
+	            poll(&pfd, 1, -1);	        
+            	    continue;
+        	 }  
+        	
+        	 walk_block(pbd, current_block_num);
+        	 flush_block(pbd);
+        	 current_block_num = (current_block_num + 1) % BLOCKNUM;
+    	
+        }  	
+      	    	    	 			
+} 
+*/
+/*
+static void groovy_udp_server_init_xdp()
+{
+	LOG(1, "[UDP][SERVER_XDP][%s]\n", "START");	
+	
+	sockfd_xdp = socket(PF_XDP, SOCK_RAW, 0);	
+				
+    	if (sockfd_xdp < 0)
+    	{
+    		int err=errno;    		
+    		printf("socket error %s\n", strerror(err));       		
+    	}  else
+    	{
+    		printf("funcking shit %d\n", sockfd_xdp);
+    	}
+    	
+    	while (1) {};      	
+}
+*/
+
+static char* getNet(int spec)
+{
+	int netType = 0;
+	struct ifaddrs *ifaddr, *ifa, *ifae = 0, *ifaw = 0;
+	static char host[NI_MAXHOST];
+
+	if (getifaddrs(&ifaddr) == -1)
+	{
+		printf("getifaddrs: error\n");
+		return NULL;
+	}
+
+	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
+	{
+		if (ifa->ifa_addr == NULL) continue;
+		if (!memcmp(ifa->ifa_addr->sa_data, "\x00\x00\xa9\xfe", 4)) continue; // 169.254.x.x
+
+		if ((strcmp(ifa->ifa_name, "eth0") == 0)     && (ifa->ifa_addr->sa_family == AF_INET)) ifae = ifa;
+		if ((strncmp(ifa->ifa_name, "wlan", 4) == 0) && (ifa->ifa_addr->sa_family == AF_INET)) ifaw = ifa;
+	}
+
+	ifa = 0;
+	netType = 0;
+	if (ifae && (!spec || spec == 1))
+	{
+		ifa = ifae;
+		netType = 1;
+	}
+
+	if (ifaw && (!spec || spec == 2))
+	{
+		ifa = ifaw;
+		netType = 2;
+	}
+
+	if (spec && ifa)
+	{
+		strcpy(host, "IP: ");
+		getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host + strlen(host), NI_MAXHOST - strlen(host), NULL, 0, NI_NUMERICHOST);
+	}
+
+	freeifaddrs(ifaddr);
+	return spec ? (ifa ? host : 0) : (char*)netType;
+}
+
+static void groovy_udp_server_init()
+{	
+	int flags, size, beTrueAddr;	
+	char *net;	    	
+	net = getNet(1);
+	if (net)
+	{
+		LOG(1, "[UDP][SERVER][START %s]\n", net);		
+	}
+	else
+	{		
+		net = getNet(2);
+		if (net)
+		{
+			LOG(1, "[UDP][SERVER][START %s]\n", net);		
+		}
+		else
+		{
+			goto init_error;   
+		}
+	}
+	
+	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);				
+    	if (sockfd < 0)
+    	{
+    		printf("socket error\n");    
+    		goto init_error;   		
+    	}     
+    	  	
+	//jumbo 		    				    	        	
+	struct ifreq ifr;	       
+        memset(&ifr, 0, sizeof(ifr));                
+        strncpy((char *)ifr.ifr_name, "eth0", IFNAMSIZ);
+	if (ioctl (sockfd, SIOCGIFMTU, &ifr) < 0)
+    	{
+    		printf("error get mtu\n");
+    		goto init_error;
+	}		
+	if ((doJumboFrames && ifr.ifr_mtu == 1500) || (!doJumboFrames && ifr.ifr_mtu != 1500)) // kernel 5.13 stmmac needs stop eth for change mtu (fixed on new kernels)
+	{		
+		ifr.ifr_flags = 1 & ~IFF_UP;    
+		if (ioctl (sockfd, SIOCSIFFLAGS, &ifr) < 0)
+    		{
+    			printf("error eth0 down\n");
+    			goto init_error;
+		}
+		LOG(1, "[ETH0][%s]\n", "DOWN");				
+		ifr.ifr_mtu = doJumboFrames ? 4042 : 1500; 
+		if (ioctl(sockfd, SIOCSIFMTU, (caddr_t)&ifr) < 0)
+		{
+			ifr.ifr_mtu = doJumboFrames ? 3800 : 1500;
+			if (ioctl(sockfd, SIOCSIFMTU, (caddr_t)&ifr) < 0)
+			{				
+				ifr.ifr_mtu = 1500; 							
+				doJumboFrames = 0;
+			} 			
+		}		
+		LOG(1, "[ETH][MTU 1500 -> %d]\n", ifr.ifr_mtu);
+		ifr.ifr_flags = 1 | IFF_UP;    
+		if (ioctl (sockfd, SIOCSIFFLAGS, &ifr) < 0)
+    		{
+    			printf("error eth0 up\n");
+    			goto init_error;
+		}	
+		LOG(1, "[ETH0][%s]\n", "UP");	
+		close(sockfd);
+		goto init_error;						    			
+	}	
+		        		    
+    	memset(&servaddr, 0, sizeof(servaddr));
+    	servaddr.sin_family = AF_INET;
+    	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    	servaddr.sin_port = htons(UDP_PORT);    	    	
+    	  	
+        // Non blocking socket                                                                                                                         	
+    	flags = fcntl(sockfd, F_GETFD, 0);    	
+    	if (flags < 0) 
+    	{
+      		printf("get falg error\n");    
+      		goto init_error;   		
+    	}
+    	flags |= O_NONBLOCK;
+    	if (fcntl(sockfd, F_SETFL, flags) < 0) 
+    	{
+       		printf("set nonblock fail\n");   
+       		goto init_error;    		
+    	}   	
+    	   		     	    	        	 	    		    	    		
 	// Settings	
-	int size = 2 * 1024 * 1024;	
+	size = 2 * 1024 * 1024;	
         if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUFFORCE, (void*)&size, sizeof(size)) < 0)     
         {
-        	printf("Error so_rcvbufforce\n");        	
+        	printf("Error so_rcvbufforce\n");  
+        	goto init_error;      	
         }  
                                     	
-	int beTrueAddr = 1;
+	beTrueAddr = 1;
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (void*)&beTrueAddr,sizeof(beTrueAddr)) < 0)
 	{
-        	printf("Error so_reuseaddr\n");        	
-        } 
+        	printf("Error so_reuseaddr\n");    
+        	goto init_error;    	
+        }                
+        
+        if (setsockopt(sockfd, IPPROTO_IP, IP_TOS, (char*)&beTrueAddr,sizeof(beTrueAddr)) < 0)
+	{
+        	printf("Error so_ip_tos\n");      
+        	goto init_error;  	
+        }     
+       /*
+        int busyPoll = 100;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_BUSY_POLL, (void*)&busyPoll,sizeof(busyPoll)) < 0)
+	{
+        	printf("Error so_busy_poll\n");        	
+        }   
+        
                             	                         	         
+#define SO_PREFER_BUSY_POLL     69
+#define SO_BUSY_POLL_BUDGET     70
+        
+        int preferBusyPoll = 1;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_PREFER_BUSY_POLL, (void*)&preferBusyPoll,sizeof(preferBusyPoll)) < 0)
+	{
+        	printf("Error so_prefer_busy_poll\n");        	
+        }   
+
+   	int busyPollBudget = 600;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_BUSY_POLL_BUDGET, (void*)&busyPollBudget,sizeof(busyPollBudget)) < 0)
+	{
+        	printf("Error so_busy_poll_budget\n");        	
+        }                          	                         	         
+*/
     	if (bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
     	{
-    		printf("bind error\n");        	
+    		printf("bind error\n");      
+    		goto init_error;  	
     	}         	    	    	 	    	    	    	    	
-    	
-    	groovyServer = 2;   	    	    	 			
+	
+	groovyServer = 2;  	
+	
+init_error:   
+	{}	
+    	   	    	    	 			
 }
 
 static void groovy_udp_server_init_inputs()
 {		
+	int flags, beTrueAddr;
 	sockfdInputs = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);				
     	if (sockfdInputs < 0)
     	{
-    		printf("socket error\n");       		
+    		printf("socket error\n");     
+    		goto inputs_error;  		
     	}    	    				    	        	
 	        		    
     	memset(&servaddrInputs, 0, sizeof(servaddrInputs));
@@ -1366,46 +1829,76 @@ static void groovy_udp_server_init_inputs()
     	servaddrInputs.sin_addr.s_addr = htonl(INADDR_ANY);
     	servaddrInputs.sin_port = htons(UDP_PORT_INPUTS);
     	  	
-        // Non blocking socket                                                                                                     
-    	int flags;
+        // Non blocking socket                                                                                                                 	
     	flags = fcntl(sockfdInputs, F_GETFD, 0);    	
     	if (flags < 0) 
     	{
-      		printf("get falg error\n");       		
+      		printf("get falg error\n");    
+      		goto inputs_error;    		
     	}
     	flags |= O_NONBLOCK;
     	if (fcntl(sockfdInputs, F_SETFL, flags) < 0) 
     	{
-       		printf("set nonblock fail\n");       		
+       		printf("set nonblock fail\n");   
+       		goto inputs_error;     		
     	}   	    	    		     	    	        	 	    		    	    		
-                                    	
-	int beTrueAddr = 1;
+        
+        beTrueAddr = 1;                            		
 	if (setsockopt(sockfdInputs, SOL_SOCKET, SO_REUSEADDR, (void*)&beTrueAddr,sizeof(beTrueAddr)) < 0)
 	{
-        	printf("Error so_reuseaddr\n");        	
-        } 
+        	printf("Error so_reuseaddr\n");    
+        	goto inputs_error;     	
+        }              	
+        
+        if (setsockopt(sockfdInputs, IPPROTO_IP, IP_TOS, (char*)&beTrueAddr,sizeof(beTrueAddr)) < 0)
+	{
+        	printf("Error so_ip_tos\n");     
+        	goto inputs_error;    	
+        }     
                             	                         	         
     	if (bind(sockfdInputs, (struct sockaddr *)&servaddrInputs, sizeof(servaddrInputs)) < 0)
     	{
-    		printf("bind error\n");        	
+    		printf("bind error\n");       
+    		goto inputs_error;  	
     	}         	    	
-    	
-    	isConnectedInputs = 0;    	 	    	    	    	    	    	  	    	    	 			
+
+inputs_error:   
+    	isConnectedInputs = 0;        		 	    	    	    	    	    	  	    	    	 			
 }
 
 static void groovy_start()
-{			
-	printf("Groovy-Server 0.3 starting\n");
+{	
+	if (!groovyServer)
+	{		
+		printf("Groovy-Server 0.3 starting\n");
 	
-	// get HPS Server Settings
-	groovy_FPGA_hps();   
+		// get HPS Server Settings
+		groovy_FPGA_hps();   
 	
-	// reset fpga    
-    	groovy_FPGA_init(0, 0, 0, 0);    	    	
+		// reset fpga    
+    		groovy_FPGA_init(0, 0, 0, 0);    	    	
 	
-	// map DDR 		
-	groovy_map_ddr();
+		// map DDR 		
+		groovy_map_ddr();		
 	
+		groovyServer = 1;
+	}	
+	
+    	// UDP Server     	
+	groovy_udp_server_init();  
+	//groovy_udp_server_init3();  
+	//groovy_udp_server_init_xdp();  
+	
+	if (groovyServer != 2)
+	{
+		goto start_error;
+	}
+	
+	if (doPs2Inputs || doJoyInputs)
+	{
+		groovy_udp_server_init_inputs();  
+	} 	  	  		    	    	    	           	    	    	    	    	    	        	    	
+
 	// load LOGO	
 	if (doScreensaver)
 	{
@@ -1415,27 +1908,23 @@ static void groovy_start()
 		groovy_FPGA_logo(1); 			
 		groovyLogo = 1;			
 	}	
-	
-    	// UDP Server     	
-	groovy_udp_server_init();  
-	
-	if (doPs2Inputs || doJoyInputs)
-	{
-		groovy_udp_server_init_inputs();  
-	} 	  	  		    	    	    	           	    	    	    	    	    	        	    	
-	    	
+		    	
     	printf("Groovy-Server 0.3 started\n");    			    	                          		
+
+start_error:
+    	{}
 }
 
 void groovy_poll()
 {	
-	if (!groovyServer)
+	if (groovyServer != 2)
 	{
 		groovy_start();
-	}		    	                                                                          	                                               					   											
-  				
-	int len = 0; 					
-	char* recvbufPtr;			
+		return;
+	}		    	                                                                          	                                               					   											  	  		  	  								
+  	
+  	int len = 0; 					
+	char* recvbufPtr;
 	
 	do
 	{												
@@ -1447,7 +1936,7 @@ void groovy_poll()
 		}					     		    
 						
 		recvbufPtr = (isBlitting) ? (char *) (buffer + HEADER_OFFSET + poc->PoC_buffer_offset + poc->PoC_bytes_recv) : (char *) &recvbuf[0];											
-		len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);			
+		len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);							
 									
 		if (len > 0) 
 		{    				
@@ -1460,14 +1949,20 @@ void groovy_poll()
 					int tota_len = 0;							
 					if (isBlitting == 1 && !blitCompression && poc->PoC_bytes_recv + len != poc->PoC_bytes_len) // raw rgb
 					{
-						groovy_FPGA_blit(poc->PoC_bytes_len, 65535);
+						if (!hpsBlit)
+						{
+							groovy_FPGA_blit(poc->PoC_bytes_len, 65535);
+						}	
 						isBlitting = 0;
 						prev_len = poc->PoC_bytes_len % 1472;
 						tota_len = poc->PoC_bytes_len;
 					}					
 					if (isBlitting == 1 && blitCompression && poc->PoC_bytes_recv + len != poc->PoC_bytes_lz4_len) // lz4 rgb
 					{
-						groovy_FPGA_blit_lz4(poc->PoC_bytes_lz4_len, 65535);
+						if (!hpsBlit)
+						{
+							groovy_FPGA_blit_lz4(poc->PoC_bytes_lz4_len, 65535);
+						}	
 						isBlitting = 0;						
 						prev_len = poc->PoC_bytes_lz4_len % 1472;
 						tota_len = poc->PoC_bytes_lz4_len;
@@ -1593,7 +2088,7 @@ void groovy_poll()
 					{
 						if (blitCompression)
 						{
-							setBlitLZ4(len);
+							setBlitLZ4(len);																					
 						}
 						else
 						{
@@ -1625,8 +2120,7 @@ void groovy_poll()
    	{   	      		
 		fflush(fp);	
 		logTime = GetTimer(LOG_TIMER);		
-   	} 
-   	   	    	
+   	} 	   	    	
    	              
 } 
 
