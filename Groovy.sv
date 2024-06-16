@@ -219,8 +219,9 @@ localparam CONF_STR = {
    "P3,Server Settings (restart);",
    "P3O[28:27],Verbose,Off,1,2,3;",
    "P3O[29],Blit at,ASAP,End Line;",       
+	"P3O[42],Jumbo Frames (Max MTU),Off,On;",
    "P3-;",
-   "P3O[33],Screensaver,On,Off;",
+   "P3O[33],Screensaver,On,Off;",	
    "P3-;",
    "P3O[39:38],Send PS2,Off,Keyboard,Keyboard & Mouse;",
    "P3O[41:40],Send Joysticks,Off,Digital,Analog;",
@@ -256,8 +257,9 @@ wire [1:0]  hps_audio_buffer = status[36:35];
 wire        hps_pwm = status[37];
 wire [1:0]  hps_kbd_inputs = status[39:38];
 wire [1:0]  hps_joy_inputs = status[41:40];
+wire        hps_jumbo_frames = status[42];
 
-wire [42:0] status;
+wire [43:0] status;
 wire [31:0] joy0;
 wire [31:0] joy1;
 
@@ -303,6 +305,7 @@ hps_ext hps_ext
         .hps_kbd_inputs(hps_kbd_inputs),
         .hps_joy_inputs(hps_joy_inputs),
         .hps_audio(hps_audio),  
+		  .hps_jumbo_frames(hps_jumbo_frames),
         .sound_rate(sound_rate),
         .sound_chan(sound_chan),
         .rgb_mode(rgb_mode),
