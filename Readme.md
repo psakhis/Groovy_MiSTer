@@ -29,6 +29,7 @@ To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux
 - (20240401) GroovyMame and Mednafen joysticks from mister
 - (20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
 - (20240502) Mednafen support for analog joysticks, keyboard and mouse
+- (20240616) New option jumbo frames on core. Tested on retroarch (mister_mtu = "3800"). Enable jumbo frames on pc side it's requiered.
 
 To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
   
@@ -49,7 +50,9 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
     -syncrefresh 
     -nothrottle
     -nomister_interlaced_fb (from 0.264) 
-    -joystickprovider mister (from 0.264)
+    -joystickprovider mister (from 0.264, analog joysticks from 0.266)
+    -keyboardprovider mister (from 0.266)
+    -mouseprovider mister (from 0.266)
         
     *Automatic frame delay is applied with frame delay 0
     -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay)
@@ -88,6 +91,7 @@ for src details, see Retroarch fork by @Calamity. https://github.com/antoniogine
     menu_driver = "rgui" (it's the only menu supported)
     vrr_runloop_enable = "true" (better performance for flycast)
     audio_sync = "false" (better performance for flycast)
+    mister_mtu = "1500" (for enable jumbo frame, 3800 is allowed)
 
     *Automatic frame delay for best results on latency options
     *For dosbox core, set 60fps on core options.
