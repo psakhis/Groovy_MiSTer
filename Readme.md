@@ -24,9 +24,8 @@ https://youtu.be/H0175WJFpUs
   
 ## Emulators available
 ### GroovyMAME 
- for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases. Download mame_mister.ini and rename to mame.ini
-
- MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
+ for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases.
+ Download mame_mister.ini and rename to mame.ini
  
     -video mister 
     -aspect 4:3 
@@ -48,6 +47,7 @@ https://youtu.be/H0175WJFpUs
 
     *Change "uifont default" to "uifont uismall.bdf" on mame.ini for pixel perfect menu
     *autosync 0 on mame.ini for menu (60hz)
+    *MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
     
 ### Mednafen 
   for src details, see emu4crt fork https://github.com/psakhis/emu4crt,on mednafen.cfg set:
