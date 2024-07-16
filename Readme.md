@@ -19,11 +19,11 @@ https://youtu.be/H0175WJFpUs
 - Copy MiSTer_groovy to /media/fat (in binary mode).
 - Copy Groovy.rbf to /media/fat/_Utility
 - Edit MiSTer.ini and add custom binary at end of file
-  
+  <sub>
   [Groovy]
   
   main=MiSTer_groovy
-  
+  </sub>
 ## Emulators available
 ### GroovyMAME 
  for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases.
