@@ -24,10 +24,8 @@ https://youtu.be/H0175WJFpUs
   main=MiSTer_groovy<br />
   </sub>
 ## Emulators available
-### GroovyMAME 
- for src details, see [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) fork by @Calamity.
- 
- Download mame_mister.ini and rename to mame.ini
+### MAME [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) by @Calamity <br />
+  Download mame_mister.ini and rename to mame.ini
  
     -video mister 
     -aspect 4:3 
@@ -51,8 +49,8 @@ https://youtu.be/H0175WJFpUs
     *autosync 0 on mame.ini for menu (60hz)
     *MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
     
-### Mednafen 
-  for src details, see [emu4crt](https://github.com/psakhis/emu4crt),on mednafen.cfg set:
+### Mednafen [emu4crt](https://github.com/psakhis/emu4crt)  
+  on mednafen.cfg set:
   
     mister.host 192.x.x.x
     mister.port 32100
@@ -60,11 +58,8 @@ https://youtu.be/H0175WJFpUs
     mister.vsync 0 (automatic frame delay)
     video.resolution_switch mister
   
-### Retroarch 
-retroach.exe -L cores/xxxx.dll file
-
-for src details, see [Retroarch](https://github.com/antonioginer/RetroArch/tree/mister) fork by @Calamity. Hardware cores only works with glcore/vulkan.
- ,on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
+### [Retroarch](https://github.com/antonioginer/RetroArch/tree/mister) 
+  on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
     mister_lz4 = "1" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
@@ -85,6 +80,8 @@ for src details, see [Retroarch](https://github.com/antonioginer/RetroArch/tree/
 
     *Automatic frame delay for best results on latency options
     *For dosbox core, set 60fps on core options.
+    *Hardware cores only works with glcore/vulkan.
+    *For run a core from command line -> retroach.exe -L cores/xxxx.dll file
     
 ### [MiSTerCast](https://github.com/iequalshane/MiSTerCast) 
 Thanks to @Shane for this great windows utility to mirror desktop.
