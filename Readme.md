@@ -16,8 +16,8 @@ https://youtu.be/H0175WJFpUs
 - [History](https://github.com/psakhis/Groovy_MiSTer/blob/main/history.txt)
 
 ## Installation (transfers in binary mode!)
-- Copy MiSTer_groovy to /media/fat (in binary mode).
-- Copy Groovy.rbf to /media/fat/_Utility
+- Copy MiSTer_groovy to /media/fat 
+- Copy Groovy.rbf to /media/fat/_Utility 
 - Edit MiSTer.ini and add custom binary at end of file<br />
   <sub>
   [Groovy]<br />
