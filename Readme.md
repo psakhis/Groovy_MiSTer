@@ -5,40 +5,32 @@ This core is a analog GPU for CRTs aiming for very low subframe latency
 
 https://youtu.be/H0175WJFpUs
 
-## Features
+## Features 
 - Very low latency (~3ms tested with GILT on GroovyMAME with frame delay 8)
-- Full RGB888
+- RGB888/RGB565/RGBA888 blitting
 - Switch all modes (progressive/interlaced) reprogramming pll according to modeline
-- Connect with ethernet (can be work on wifi5/6 or Gb lan)
-- Menu options: scandoubler, video position, framebuffer, ..
-- Audio stream (set ON on audio core options)
-- Double framebuffer for interlaced resolutions (framebuffer per field)
-- More speed and stability fixes (lz4 is recommended for interlaced or 480p)
-- Retroarch support for opengl/vulkan hardware rendered cores like flycast
-  * Dosbox-pure set 60fps on core options
-  * Flycast, disable threaded render on core options (or config/Flycast/Flycast.opt reicast_threaded_rendering = "disabled")
-- Mednafen/Retroarch can work with arcade_31 monitor on swithres.ini
-- GroovyMame MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
-  
-To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
+- Connect with GB ethernet (direct connection recommended)
+- Audio stream
+- Inputs stream (keyboard, mouse, 2 joypads)
+- XDP server (high performance network server)
+- [History](https://github.com/psakhis/Groovy_MiSTer/blob/main/history.txt)
 
-## Test build features (experimental)
-- (20240302) New native LZ4 blitting inside FPGA (from GroovyMame 0.264, Mednafen and MiSTerCast beta)
-- (20240302) New PWM core option (implemented by https://github.com/Jokippo)
-- (20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
-- (20240401) GroovyMame and Mednafen joysticks from mister
-- (20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
-- (20240502) Mednafen support for analog joysticks, keyboard and mouse
-- (20240616) New option jumbo frames on core. Tested on retroarch (mister_mtu = "3800"). Enable jumbo frames on pc side it's requiered.
-
-To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
-  
+## Installation (transfers in binary mode!)
+- Copy MiSTer_groovy to /media/fat 
+- Copy Groovy.rbf to /media/fat/_Utility 
+- Edit MiSTer.ini and add custom binary at end of file<br />
+  <sub>
+  [Groovy]<br />
+  main=MiSTer_groovy<br />
+  </sub>
+- Only for XDP high performance feature, some tweaks on Linux are needed. For UDP isn't needed.
+  1. Replace kernel: zImage_dtb file on /media/fat/linux (is same kernel with some patches for eth0 driver and builded with CONFIG_XDP_SOCKETS=Y)
+  2. Save groovy_xdp_kern.o to /usr/lib/arm-linux-gnueabihf/bpf (this program will be injected on eth while xdp is running)
+  3. Save libelf.so.1 on /usr/lib (library requiered) 
 ## Emulators available
-
-### GroovyMAME
- for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases
- ,to activate new MiSTer backend set on with (note: you can edit it on mame.ini or like arguments):
-  
+### [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) <br />
+  MAME fork by @Calamity, download mame_mister.ini and rename to mame.ini
+ 
     -video mister 
     -aspect 4:3 
     -switchres 
@@ -59,10 +51,10 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
 
     *Change "uifont default" to "uifont uismall.bdf" on mame.ini for pixel perfect menu
     *autosync 0 on mame.ini for menu (60hz)
+    *MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
     
-### Mednafen 
-  for src details, see emu4crt fork https://github.com/psakhis/emu4crt
-  ,on mednafen.cfg set:
+### [emu4crt](https://github.com/psakhis/emu4crt) 
+  Mednafen fork, on mednafen.cfg set:
   
     mister.host 192.x.x.x
     mister.port 32100
@@ -70,15 +62,11 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
     mister.vsync 0 (automatic frame delay)
     video.resolution_switch mister
   
-  
-### Retroarch (test build)
-retroach.exe -L cores/xxxx.dll file
-
-for src details, see Retroarch fork by @Calamity. https://github.com/antonioginer/RetroArch/tree/mister  
- ,on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
+### [Retroarch](https://github.com/antonioginer/RetroArch/tree/mister) 
+  Retroarch fork, on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
-    mister_lz4 = "3" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
+    mister_lz4 = "1" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
     crt_switch_resolution = "4" (switchres.ini custom file)
     crt_switch_resolution_super = "0"
     aspect_ratio_index = "22" (core provided)
@@ -87,6 +75,7 @@ for src details, see Retroarch fork by @Calamity. https://github.com/antoniogine
     mister_scanlines = "true" 
     mister_force_rgb565 = "false" (activate it when bandwidth problems)
     mister_interlaced_fb = "true"
+    input_driver = "mister" (for input keyboard/mouse connected on MiSTer)
     input_joypad_driver = "mister" (for input controllers connected on MiSTer)
     menu_driver = "rgui" (it's the only menu supported)
     vrr_runloop_enable = "true" (better performance for flycast)
@@ -95,9 +84,11 @@ for src details, see Retroarch fork by @Calamity. https://github.com/antoniogine
 
     *Automatic frame delay for best results on latency options
     *For dosbox core, set 60fps on core options.
+    *Hardware cores only works with glcore/vulkan.
+    *For run a core from command line -> retroach.exe -L cores/xxxx.dll file
     
-### MiSTerCast 
-Thanks to @Shane for this great windows utility to mirror desktop. https://github.com/iequalshane/MiSTerCast
+### [MiSTerCast](https://github.com/iequalshane/MiSTerCast) 
+Thanks to @Shane for this great windows utility to mirror desktop.
 
 ## Thanks
 @Calamity for hard testing core and implement GroovyMAME for it
@@ -106,11 +97,11 @@ Thanks to @Shane for this great windows utility to mirror desktop. https://githu
 
 @jotego, for analog adjustment module.
 
-GroovyArcade Discord, https://discord.gg/YtQ6pJh #nogpu
+[GroovyArcade Discord](https://discord.gg/YtQ6pJh) #nogpu
 
 MiSTer Discord #dev-talk
 
-@alanswx for their lessons https://github.com/alanswx/Tutorials_MiSTer
+@alanswx for their [lessons](https://github.com/alanswx/Tutorials_MiSTer)
 
 @wickerwaka for their tips using ddr
 
