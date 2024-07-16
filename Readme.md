@@ -14,7 +14,6 @@ https://youtu.be/H0175WJFpUs
 - Inputs stream (keyboard, mouse, 2 joypads)
 - XDP server option
 - History https://github.com/psakhis/Groovy_MiSTer/blob/main/history.txt
-- GroovyMame MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
 
 ## Installation (transfers in binary mode!)
 - Copy MiSTer_groovy to /media/fat (in binary mode).
@@ -26,7 +25,8 @@ https://youtu.be/H0175WJFpUs
 ## Emulators available
 ### GroovyMAME 
  for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases. Download mame_mister.ini and rename to mame.ini
-  
+ MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
+ 
     -video mister 
     -aspect 4:3 
     -switchres 
