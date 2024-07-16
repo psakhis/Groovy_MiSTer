@@ -413,7 +413,7 @@ void SelectFile(const char* path, const char* pFileExt, int Options, unsigned ch
 
 		if (Options & SCANO_SAVES)
 		{
-			snprintf(tmp, sizeof(tmp), "%s/%s", SAVE_DIR, CoreName);
+			snprintf(tmp, sizeof(tmp), "%s/%s", SAVE_DIR, CoreName2);
 			home = tmp;
 		}
 
@@ -928,7 +928,7 @@ void HandleUI(void)
 {
 	PROFILE_FUNCTION();
 
-	if (bt_timer >= 0 && !is_groovy())
+	if (bt_timer >= 0)
 	{
 		if (!bt_timer) bt_timer = (int32_t)GetTimer(6000);
 		else if (CheckTimer((uint32_t)bt_timer))
@@ -1278,37 +1278,38 @@ void HandleUI(void)
 	{
 		if (down)
 		{
-            if((menumask >= ((uint64_t)1 << (menusub + 1))))	// Any active entries left?
-            {
-			    do
-			    {
-				    menusub++;
-			    } while ((menumask & ((uint64_t)1 << menusub)) == 0);
-            }
-            else
-            {
-                menusub = 0; // jump to first item
-            }
+			if((menumask >= ((uint64_t)1 << (menusub + 1))))	// Any active entries left?
+			{
+				do
+				{
+					menusub++;
+				} while ((menumask & ((uint64_t)1 << menusub)) == 0);
+			} else {
+				menusub = 0; // jump to first item
+				while ((menumask & ((uint64_t)1 << menusub )) == 0) menusub++;
+			}
 
-            menustate = parentstate;
+			menustate = parentstate;
 		}
 
 		if (up)
 		{
-            if (menusub > 0)
-            {
-			    do
-			    {
-				    --menusub;
-			    } while ((menumask & ((uint64_t)1 << menusub)) == 0);
-            }
-            else
-            {
-                do
-                {
-                    menusub++;
-                } while ((menumask & ((uint64_t)(~0) << (menusub + 1))) != 0); // jump to last item
-            }
+			if (menusub > 0)
+			{
+				do
+				{
+					--menusub;
+				} while (menusub != 0 && (menumask & ((uint64_t)1 << menusub)) == 0);
+				if (menusub == 0 && (menumask & 1) == 0) { //If the first menu entry is disabled...
+					while ((menumask & ((uint64_t)(~0) << (menusub + 1))) != 0) menusub++; 
+					//Go to to last item 
+				}
+			} else {
+				do
+				{
+					menusub++;
+				} while ((menumask & ((uint64_t)(~0) << (menusub + 1))) != 0); // jump to last item
+			}
 			menustate = parentstate;
 		}
 	}
@@ -2351,6 +2352,7 @@ void HandleUI(void)
 
 									if (is_pce() && !bit) pcecd_reset();
 									if (is_saturn() && !bit) saturn_reset();
+									if (is_n64() && !bit) n64_reset();
 
 									user_io_status_set(opt, 1, ex);
 									user_io_status_set(opt, 0, ex);
@@ -2420,10 +2422,6 @@ void HandleUI(void)
 					neocd_set_en(0);
 					neogeo_romset_tx(selPath, 0);
 				}
-				else if (is_n64())
-				{
-					if (!n64_rom_tx(selPath, idx, load_addr)) Info("failed to load ROM");
-				}
 				else
 				{
 					if (is_pce())
@@ -2432,8 +2430,17 @@ void HandleUI(void)
 						pcecd_reset();
 					}
 					if (!store_name) user_io_store_filename(selPath);
-					user_io_file_tx(selPath, idx, opensave, 0, 0, load_addr);
-					if (user_io_use_cheats() && !store_name) cheats_init(selPath, user_io_get_file_crc());
+					if (is_n64())
+					{
+						uint32_t n64_crc;
+						if (!n64_rom_tx(selPath, idx, load_addr, n64_crc)) Info("failed to load ROM");
+						else if (user_io_use_cheats() && !store_name) cheats_init(selPath, n64_crc);
+					}
+					else
+					{
+						user_io_file_tx(selPath, idx, opensave, 0, 0, load_addr);
+						if (user_io_use_cheats() && !store_name) cheats_init(selPath, user_io_get_file_crc());
+					}
 				}
 
 				if (addon[0] == 'f' && addon[1] == '1') process_addon(addon, idx);
@@ -5833,7 +5840,7 @@ void HandleUI(void)
 		OsdWrite(m++, "", 0, 0);
 		strcpy(s, " ROM    : ");
 		{
-			char *path = user_io_get_core_path();
+			char *path = HomeDir();
 			int len = strlen(path);
 			char *name = minimig_config.kickstart;
 			if (!strncasecmp(name, path, len))  name += len + 1;
@@ -6033,7 +6040,7 @@ void HandleUI(void)
 				if (minimig_config.hardfile[i].filename[0])
 				{
 					strcpy(s, "                                ");
-					char *path = user_io_get_core_path();
+					char *path = HomeDir();
 					int len = strlen(path);
 					char *name = minimig_config.hardfile[i].filename;
 					if (!strncasecmp(name, path, len))  name += len + 1;
@@ -6879,9 +6886,14 @@ void HandleUI(void)
 				break;
 			}
 		}
-
-		if (isXmlName(Selected_tmp))
+		
+		if (is_groovy()) //clean server
 		{
+			groovy_stop();
+		}
+		
+		if (isXmlName(Selected_tmp))
+		{ 
 			// find the RBF file from the XML
 			xml_load(getFullPath(Selected_tmp));
 		}
@@ -6892,6 +6904,10 @@ void HandleUI(void)
 		break;
 
 	case MENU_CORE_FILE_SELECTED2:
+		if (is_groovy()) //clean server
+		{
+			groovy_stop();
+		}
 		fpga_load_rbf(Selected_tmp, selPath);
 		menustate = MENU_NONE1;
 		break;
@@ -7114,7 +7130,10 @@ void PrintDirectory(int expand)
 				}
 				else
 				{
-					strcpy(&s[22], " <DIR>");
+					if (flist_DirItem(k)->flags & DT_EXT_ZIP) // mark ZIP archive with different suffix
+						strcpy(&s[22], " <zip>");
+					else
+						strcpy(&s[22], " <DIR>");
 				}
 				len2 = 0;
 			}

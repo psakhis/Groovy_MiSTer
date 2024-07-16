@@ -3,7 +3,7 @@ Install instructions
 You need last MiSTer main (2024/03/25)
 
 1) Copy "MiSTer_groovy" to /media/fat. If you are using filezilla, be sure transfer is in binary mode.
-2) Copy core "Groovy_20250327.rbf" to /media/fat/_Utility
+2) Copy core "Groovy_20250712.rbf" to /media/fat/_Utility
 3) Edit "/media/fat/MiSTer.ini" and add custom binary entry to core
    ....
    [Groovy]
