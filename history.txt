@@ -1,0 +1,13 @@
+History
+
+(20240302) New native LZ4 blitting inside FPGA (GroovyMame 0.264, Mednafen, Retroarch and MiSTerCast 1.01 compatible)
+(20240302) New PWM core option (implemented by https://github.com/Jokippo)
+(20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
+(20240401) GroovyMame and Mednafen joysticks from mister.
+(20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
+(20240502) Mednafen support for analog joysticks, keyboard and mouse. (GroovyMame 0.266 and Retroarch)
+(20240616) New option jumbo frames on core. Tested on retroarch (mister_mtu = "3800"). Enable jumbo frames on pc side it's requiered.
+(20240712) New high performance server mode XDP. ARM Clock settings.
+           - Change kernel zImage_dtb file on /media/fat/linux (is same kernel with some patches for eth0 driver and CONFIG_XDP_SOCKETS=Y)
+           - New file groovy_xdp_kern.o to /usr/lib/arm-linux-gnueabihf/bpf
+           - New libelf.so.1 to /usr/lib
