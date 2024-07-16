@@ -19,6 +19,7 @@ https://youtu.be/H0175WJFpUs
 - Copy MiSTer_groovy to /media/fat (in binary mode).
 - Copy Groovy.rbf to /media/fat/_Utility
 - Edit MiSTer.ini and add custom binary at end of file
+  
   [Groovy]
   main=MiSTer_groovy
   
