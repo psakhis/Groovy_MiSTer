@@ -24,8 +24,8 @@ https://youtu.be/H0175WJFpUs
   main=MiSTer_groovy<br />
   </sub>
 ## Emulators available
-### MAME  [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) fork by @Calamity <br />
-  Download mame_mister.ini and rename to mame.ini
+### [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) <br />
+  MAME fork by @Calamity, download mame_mister.ini and rename to mame.ini
  
     -video mister 
     -aspect 4:3 
@@ -49,8 +49,8 @@ https://youtu.be/H0175WJFpUs
     *autosync 0 on mame.ini for menu (60hz)
     *MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
     
-### Mednafen  [emu4crt](https://github.com/psakhis/emu4crt) fork 
-  on mednafen.cfg set:
+### [emu4crt](https://github.com/psakhis/emu4crt) 
+  Mednafen fork, on mednafen.cfg set:
   
     mister.host 192.x.x.x
     mister.port 32100
@@ -58,8 +58,8 @@ https://youtu.be/H0175WJFpUs
     mister.vsync 0 (automatic frame delay)
     video.resolution_switch mister
   
-### [Retroarch](https://github.com/antonioginer/RetroArch/tree/mister) fork
-  on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
+### [Retroarch](https://github.com/antonioginer/RetroArch/tree/mister) 
+  Retroarch fork, on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
     mister_lz4 = "1" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
