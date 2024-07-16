@@ -25,7 +25,7 @@ https://youtu.be/H0175WJFpUs
   </sub>
 ## Emulators available
 ### GroovyMAME 
- for src details, see [GroovyMAME] fork by @Calamity.(https://github.com/antonioginer/GroovyMAME/releases)
+ for src details, see [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) fork by @Calamity.
  
  Download mame_mister.ini and rename to mame.ini
  
@@ -52,7 +52,7 @@ https://youtu.be/H0175WJFpUs
     *MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
     
 ### Mednafen 
-  for src details, see [emu4crt] fork (https://github.com/psakhis/emu4crt),on mednafen.cfg set:
+  for src details, see [emu4crt](https://github.com/psakhis/emu4crt),on mednafen.cfg set:
   
     mister.host 192.x.x.x
     mister.port 32100
@@ -63,7 +63,7 @@ https://youtu.be/H0175WJFpUs
 ### Retroarch 
 retroach.exe -L cores/xxxx.dll file
 
-for src details, see [Retroarch] fork by @Calamity. (https://github.com/antonioginer/RetroArch/tree/mister). Hardware cores only works with glcore/vulkan.
+for src details, see [Retroarch](https://github.com/antonioginer/RetroArch/tree/mister) fork by @Calamity. Hardware cores only works with glcore/vulkan.
  ,on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
@@ -86,8 +86,8 @@ for src details, see [Retroarch] fork by @Calamity. (https://github.com/antoniog
     *Automatic frame delay for best results on latency options
     *For dosbox core, set 60fps on core options.
     
-### MiSTerCast 
-Thanks to @Shane for this great windows utility to mirror desktop. [MiSTerCast](https://github.com/iequalshane/MiSTerCast)
+### [MiSTerCast](https://github.com/iequalshane/MiSTerCast) 
+Thanks to @Shane for this great windows utility to mirror desktop.
 
 ## Thanks
 @Calamity for hard testing core and implement GroovyMAME for it
@@ -96,11 +96,11 @@ Thanks to @Shane for this great windows utility to mirror desktop. [MiSTerCast](
 
 @jotego, for analog adjustment module.
 
-GroovyArcade Discord, https://discord.gg/YtQ6pJh #nogpu
+[GroovyArcade Discord](https://discord.gg/YtQ6pJh) #nogpu
 
 MiSTer Discord #dev-talk
 
-@alanswx for their lessons https://github.com/alanswx/Tutorials_MiSTer
+@alanswx for their [lessons](https://github.com/alanswx/Tutorials_MiSTer)
 
 @wickerwaka for their tips using ddr
 
