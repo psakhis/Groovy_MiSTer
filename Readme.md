@@ -5,39 +5,27 @@ This core is a analog GPU for CRTs aiming for very low subframe latency
 
 https://youtu.be/H0175WJFpUs
 
-## Features
+## Features 
 - Very low latency (~3ms tested with GILT on GroovyMAME with frame delay 8)
-- Full RGB888
+- RGB888/RGB565/RGBA888 blitting
 - Switch all modes (progressive/interlaced) reprogramming pll according to modeline
-- Connect with ethernet (can be work on wifi5/6 or Gb lan)
-- Menu options: scandoubler, video position, framebuffer, ..
+- Connect with GB ethernet (direct connection recommended)
 - Audio stream (set ON on audio core options)
-- Double framebuffer for interlaced resolutions (framebuffer per field)
-- More speed and stability fixes (lz4 is recommended for interlaced or 480p)
-- Retroarch support for opengl/vulkan hardware rendered cores like flycast
-  * Dosbox-pure set 60fps on core options
-  * Flycast, disable threaded render on core options (or config/Flycast/Flycast.opt reicast_threaded_rendering = "disabled")
-- Mednafen/Retroarch can work with arcade_31 monitor on swithres.ini
+- Inputs stream (keyboard, mouse, 2 joypads)
+- XDP server option
+- <a url=https://github.com/psakhis/Groovy_MiSTer/blob/main/history.txt>History</a>
 - GroovyMame MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
-  
-To install on your MiSTer you need replace MiSTer binary, so get from /hps_linux/main and copy to /media/fat of your sdcard (i think 'killall MiSTer' before copy is needed)
 
-## Test build features (experimental)
-- (20240302) New native LZ4 blitting inside FPGA (from GroovyMame 0.264, Mednafen and MiSTerCast beta)
-- (20240302) New PWM core option (implemented by https://github.com/Jokippo)
-- (20240325) Framebuffer progressive on interlaced resolutions. On MAME new argument -nomister_interlaced_fb to activate it
-- (20240401) GroovyMame and Mednafen joysticks from mister
-- (20240427) Retroarch (rgui menu, new options, inputs and hardware cores)
-- (20240502) Mednafen support for analog joysticks, keyboard and mouse
-- (20240616) New option jumbo frames on core. Tested on retroarch (mister_mtu = "3800"). Enable jumbo frames on pc side it's requiered.
-
-To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_MiSTer/tree/main/hps_linux
+## Installation (transfers in binary mode!)
+- Copy MiSTer_groovy to /media/fat (in binary mode).
+- Copy Groovy.rbf to /media/fat/_Utility
+- Edit MiSTer.ini and add custom binary at end of file
+  [Groovy]
+  main=MiSTer_groovy
   
 ## Emulators available
-
-### GroovyMAME
- for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases
- ,to activate new MiSTer backend set on with (note: you can edit it on mame.ini or like arguments):
+### GroovyMAME 
+ for src details, see GroovyMAME fork by @Calamity. Now merged https://github.com/antonioginer/GroovyMAME/releases. Download mame_mister.ini and rename to mame.ini
   
     -video mister 
     -aspect 4:3 
@@ -61,8 +49,7 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
     *autosync 0 on mame.ini for menu (60hz)
     
 ### Mednafen 
-  for src details, see emu4crt fork https://github.com/psakhis/emu4crt
-  ,on mednafen.cfg set:
+  for src details, see emu4crt fork https://github.com/psakhis/emu4crt,on mednafen.cfg set:
   
     mister.host 192.x.x.x
     mister.port 32100
@@ -70,15 +57,14 @@ To install on your MiSTer follow instructions https://github.com/psakhis/Groovy_
     mister.vsync 0 (automatic frame delay)
     video.resolution_switch mister
   
-  
-### Retroarch (test build)
+### Retroarch 
 retroach.exe -L cores/xxxx.dll file
 
-for src details, see Retroarch fork by @Calamity. https://github.com/antonioginer/RetroArch/tree/mister  
+for src details, see Retroarch fork by @Calamity. https://github.com/antonioginer/RetroArch/tree/mister. Hardware cores only works with glcore/vulkan.
  ,on retroarch.cfg set (note: these lines has to exists on retroarch.cfg):
   
     mister_ip = "192.x.x.x"
-    mister_lz4 = "3" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
+    mister_lz4 = "1" (0-raw, 1-lz4, 2-lz4hc, 3-adaptative)
     crt_switch_resolution = "4" (switchres.ini custom file)
     crt_switch_resolution_super = "0"
     aspect_ratio_index = "22" (core provided)
@@ -87,6 +73,7 @@ for src details, see Retroarch fork by @Calamity. https://github.com/antoniogine
     mister_scanlines = "true" 
     mister_force_rgb565 = "false" (activate it when bandwidth problems)
     mister_interlaced_fb = "true"
+    input_driver = "mister" (for input keyboard/mouse connected on MiSTer)
     input_joypad_driver = "mister" (for input controllers connected on MiSTer)
     menu_driver = "rgui" (it's the only menu supported)
     vrr_runloop_enable = "true" (better performance for flycast)
