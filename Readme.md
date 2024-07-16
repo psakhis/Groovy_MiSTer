@@ -13,7 +13,7 @@ https://youtu.be/H0175WJFpUs
 - Audio stream (set ON on audio core options)
 - Inputs stream (keyboard, mouse, 2 joypads)
 - XDP server option
-- <a id='history.txt'></a>
+- History https://github.com/psakhis/Groovy_MiSTer/blob/main/history.txt
 - GroovyMame MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
 
 ## Installation (transfers in binary mode!)
