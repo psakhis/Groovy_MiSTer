@@ -31,6 +31,8 @@ module hps_ext
     input      [1:0]  hps_joy_inputs,      
     input             hps_audio,
 	 input             hps_jumbo_frames,
+	 input             hps_server_type,
+	 input      [1:0]  hps_arm_clock,
     output reg [1:0]  sound_rate = 0,
     output reg [1:0]  sound_chan = 0,
     output reg [1:0]  rgb_mode = 0,
@@ -231,7 +233,7 @@ always@(posedge clk_sys) begin
                                         endcase
                                                 
                                GET_GROOVY_HPS: case(byte_cnt)
-                                                 1: io_dout <= {7'd0, hps_jumbo_frames, hps_joy_inputs, hps_kbd_inputs, hps_screensaver, hps_blit, hps_verbose};                                                                                                 
+                                                 1: io_dout <= {4'd0, hps_arm_clock, hps_server_type, hps_jumbo_frames, hps_joy_inputs, hps_kbd_inputs, hps_screensaver, hps_blit, hps_verbose};                                                                                                 
                                                endcase                                 
                                                 
                                SET_INIT: case(byte_cnt)

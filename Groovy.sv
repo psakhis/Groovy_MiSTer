@@ -1,162 +1,177 @@
 //============================================================================
-//  Groovy_MiSTer by psakhis
+//
+//  This program is free software; you can redistribute it and/or modify it
+//  under the terms of the GNU General Public License as published by the Free
+//  Software Foundation; either version 2 of the License, or (at your option)
+//  any later version.
+//
+//  This program is distributed in the hope that it will be useful, but WITHOUT
+//  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+//  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+//  more details.
+//
+//  You should have received a copy of the GNU General Public License along
+//  with this program; if not, write to the Free Software Foundation, Inc.,
+//  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+//
 //============================================================================
 
 module emu
 (
-        //Master input clock
-        input         CLK_50M,
+	//Master input clock
+	input         CLK_50M,
 
-        //Async reset from top-level module.
-        //Can be used as initial reset.
-        input         RESET,
+	//Async reset from top-level module.
+	//Can be used as initial reset.
+	input         RESET,
 
-        //Must be passed to hps_io module
-        inout  [48:0] HPS_BUS,
+	//Must be passed to hps_io module
+	inout  [48:0] HPS_BUS,
 
-        //Base video clock. Usually equals to CLK_SYS.
-        output        CLK_VIDEO,
+	//Base video clock. Usually equals to CLK_SYS.
+	output        CLK_VIDEO,
 
-        //Multiple resolutions are supported using different CE_PIXEL rates.
-        //Must be based on CLK_VIDEO
-        output        CE_PIXEL,
+	//Multiple resolutions are supported using different CE_PIXEL rates.
+	//Must be based on CLK_VIDEO
+	output        CE_PIXEL,
 
-        //Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-        //if VIDEO_ARX[12] or VIDEO_ARY[12] is set then [11:0] contains scaled size instead of aspect ratio.
-        output [12:0] VIDEO_ARX,
-        output [12:0] VIDEO_ARY,
+	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
+	//if VIDEO_ARX[12] or VIDEO_ARY[12] is set then [11:0] contains scaled size instead of aspect ratio.
+	output [12:0] VIDEO_ARX,
+	output [12:0] VIDEO_ARY,
 
-        output  [7:0] VGA_R,
-        output  [7:0] VGA_G,
-        output  [7:0] VGA_B,
-        output        VGA_HS,
-        output        VGA_VS,
-        output        VGA_DE,    // = ~(VBlank | HBlank)
-        output        VGA_F1,
-        output [1:0]  VGA_SL,
-        output        VGA_SCALER, // Force VGA scaler
-        output        VGA_DISABLE, // analog out is off
+	output  [7:0] VGA_R,
+	output  [7:0] VGA_G,
+	output  [7:0] VGA_B,
+	output        VGA_HS,
+	output        VGA_VS,
+	output        VGA_DE,    // = ~(VBlank | HBlank)
+	output        VGA_F1,
+	output [1:0]  VGA_SL,
+	output        VGA_SCALER, // Force VGA scaler
+	output        VGA_DISABLE, // analog out is off
 
-        input  [11:0] HDMI_WIDTH,
-        input  [11:0] HDMI_HEIGHT,
-        output        HDMI_FREEZE,
+	input  [11:0] HDMI_WIDTH,
+	input  [11:0] HDMI_HEIGHT,
+	output        HDMI_FREEZE,
+	output        HDMI_BLACKOUT,
 
 `ifdef MISTER_FB
-        // Use framebuffer in DDRAM
-        // FB_FORMAT:
-        //    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
-        //    [3]   : 0=16bits 565 1=16bits 1555
-        //    [4]   : 0=RGB  1=BGR (for 16/24/32 modes)
-        //
-        // FB_STRIDE either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
-        output        FB_EN,
-        output  [4:0] FB_FORMAT,
-        output [11:0] FB_WIDTH,
-        output [11:0] FB_HEIGHT,
-        output [31:0] FB_BASE,
-        output [13:0] FB_STRIDE,
-        input         FB_VBL,
-        input         FB_LL,
-        output        FB_FORCE_BLANK,
+	// Use framebuffer in DDRAM
+	// FB_FORMAT:
+	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
+	//    [3]   : 0=16bits 565 1=16bits 1555
+	//    [4]   : 0=RGB  1=BGR (for 16/24/32 modes)
+	//
+	// FB_STRIDE either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
+	output        FB_EN,
+	output  [4:0] FB_FORMAT,
+	output [11:0] FB_WIDTH,
+	output [11:0] FB_HEIGHT,
+	output [31:0] FB_BASE,
+	output [13:0] FB_STRIDE,
+	input         FB_VBL,
+	input         FB_LL,
+	output        FB_FORCE_BLANK,
 
 `ifdef MISTER_FB_PALETTE
-        // Palette control for 8bit modes.
-        // Ignored for other video modes.
-        output        FB_PAL_CLK,
-        output  [7:0] FB_PAL_ADDR,
-        output [23:0] FB_PAL_DOUT,
-        input  [23:0] FB_PAL_DIN,
-        output        FB_PAL_WR,
+	// Palette control for 8bit modes.
+	// Ignored for other video modes.
+	output        FB_PAL_CLK,
+	output  [7:0] FB_PAL_ADDR,
+	output [23:0] FB_PAL_DOUT,
+	input  [23:0] FB_PAL_DIN,
+	output        FB_PAL_WR,
 `endif
 `endif
 
-        output        LED_USER,  // 1 - ON, 0 - OFF.
+	output        LED_USER,  // 1 - ON, 0 - OFF.
 
-        // b[1]: 0 - LED status is system status OR'd with b[0]
-        //       1 - LED status is controled solely by b[0]
-        // hint: supply 2'b00 to let the system control the LED.
-        output  [1:0] LED_POWER,
-        output  [1:0] LED_DISK,
+	// b[1]: 0 - LED status is system status OR'd with b[0]
+	//       1 - LED status is controled solely by b[0]
+	// hint: supply 2'b00 to let the system control the LED.
+	output  [1:0] LED_POWER,
+	output  [1:0] LED_DISK,
 
-        // I/O board button press simulation (active high)
-        // b[1]: user button
-        // b[0]: osd button
-        output  [1:0] BUTTONS,
+	// I/O board button press simulation (active high)
+	// b[1]: user button
+	// b[0]: osd button
+	output  [1:0] BUTTONS,
 
-        input         CLK_AUDIO, // 24.576 MHz
-        output [15:0] AUDIO_L,
-        output [15:0] AUDIO_R,
-        output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
-        output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
+	input         CLK_AUDIO, // 24.576 MHz
+	output [15:0] AUDIO_L,
+	output [15:0] AUDIO_R,
+	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
+	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
 
-        //ADC
-        inout   [3:0] ADC_BUS,
+	//ADC
+	inout   [3:0] ADC_BUS,
 
-        //SD-SPI
-        output        SD_SCK,
-        output        SD_MOSI,
-        input         SD_MISO,
-        output        SD_CS,
-        input         SD_CD,
+	//SD-SPI
+	output        SD_SCK,
+	output        SD_MOSI,
+	input         SD_MISO,
+	output        SD_CS,
+	input         SD_CD,
 
-        //High latency DDR3 RAM interface
-        //Use for non-critical time purposes
-        output        DDRAM_CLK,
-        input         DDRAM_BUSY,
-        output  [7:0] DDRAM_BURSTCNT,
-        output [28:0] DDRAM_ADDR,
-        input  [63:0] DDRAM_DOUT,
-        input         DDRAM_DOUT_READY,
-        output        DDRAM_RD,
-        output [63:0] DDRAM_DIN,
-        output  [7:0] DDRAM_BE,
-        output        DDRAM_WE,
+	//High latency DDR3 RAM interface
+	//Use for non-critical time purposes
+	output        DDRAM_CLK,
+	input         DDRAM_BUSY,
+	output  [7:0] DDRAM_BURSTCNT,
+	output [28:0] DDRAM_ADDR,
+	input  [63:0] DDRAM_DOUT,
+	input         DDRAM_DOUT_READY,
+	output        DDRAM_RD,
+	output [63:0] DDRAM_DIN,
+	output  [7:0] DDRAM_BE,
+	output        DDRAM_WE,
 
-        //SDRAM interface with lower latency
-        output        SDRAM_CLK,
-        output        SDRAM_CKE,
-        output [12:0] SDRAM_A,
-        output  [1:0] SDRAM_BA,
-        inout  [15:0] SDRAM_DQ,
-        output        SDRAM_DQML,
-        output        SDRAM_DQMH,
-        output        SDRAM_nCS,
-        output        SDRAM_nCAS,
-        output        SDRAM_nRAS,
-        output        SDRAM_nWE,
+	//SDRAM interface with lower latency
+	output        SDRAM_CLK,
+	output        SDRAM_CKE,
+	output [12:0] SDRAM_A,
+	output  [1:0] SDRAM_BA,
+	inout  [15:0] SDRAM_DQ,
+	output        SDRAM_DQML,
+	output        SDRAM_DQMH,
+	output        SDRAM_nCS,
+	output        SDRAM_nCAS,
+	output        SDRAM_nRAS,
+	output        SDRAM_nWE,
 
 `ifdef MISTER_DUAL_SDRAM
-        //Secondary SDRAM
-        //Set all output SDRAM_* signals to Z ASAP if SDRAM2_EN is 0
-        input         SDRAM2_EN,
-        output        SDRAM2_CLK,
-        output [12:0] SDRAM2_A,
-        output  [1:0] SDRAM2_BA,
-        inout  [15:0] SDRAM2_DQ,
-        output        SDRAM2_nCS,
-        output        SDRAM2_nCAS,
-        output        SDRAM2_nRAS,
-        output        SDRAM2_nWE,
+	//Secondary SDRAM
+	//Set all output SDRAM_* signals to Z ASAP if SDRAM2_EN is 0
+	input         SDRAM2_EN,
+	output        SDRAM2_CLK,
+	output [12:0] SDRAM2_A,
+	output  [1:0] SDRAM2_BA,
+	inout  [15:0] SDRAM2_DQ,
+	output        SDRAM2_nCS,
+	output        SDRAM2_nCAS,
+	output        SDRAM2_nRAS,
+	output        SDRAM2_nWE,
 `endif
 
-        input         UART_CTS,
-        output        UART_RTS,
-        input         UART_RXD,
-        output        UART_TXD,
-        output        UART_DTR,
-        input         UART_DSR,
+	input         UART_CTS,
+	output        UART_RTS,
+	input         UART_RXD,
+	output        UART_TXD,
+	output        UART_DTR,
+	input         UART_DSR,
 
-        // Open-drain User port.
-        // 0 - D+/RX
-        // 1 - D-/TX
-        // 2..6 - USR2..USR6
-        // Set USER_OUT to 1 to read from USER_IN.
-        input   [6:0] USER_IN,
-        output  [6:0] USER_OUT,
+	// Open-drain User port.
+	// 0 - D+/RX
+	// 1 - D-/TX
+	// 2..6 - USR2..USR6
+	// Set USER_OUT to 1 to read from USER_IN.
+	input   [6:0] USER_IN,
+	output  [6:0] USER_OUT,
 
-        input         OSD_STATUS, 
-
-        output        PWM_EN          //wait to see on framework someday
+	input         OSD_STATUS,
+	
+	output        PWM_EN          //wait to see on framework someday
 );
 
 ///////// Default values for ports not used in this core /////////
@@ -166,11 +181,14 @@ assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
+//assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;  
 
 assign VGA_SL = PoC_interlaced && !PoC_FB_interlaced ? 1'b0 : scandoubler_fx;
-assign VGA_SCALER = 0;
+//assign VGA_F1 = 0;
+assign VGA_SCALER  = 0;
 assign VGA_DISABLE = 0;
 assign HDMI_FREEZE = 0;
+assign HDMI_BLACKOUT = 0;
 
 assign AUDIO_S = hps_audio ? 1'b1 : 1'b0;
 assign AUDIO_L = hps_audio ? sound_l_out : 1'b0;
@@ -179,21 +197,19 @@ assign AUDIO_MIX = 0;
 
 assign LED_DISK = 0;
 assign LED_POWER = 0;
-assign LED_USER = 0;
 assign BUTTONS = 0;
 
 assign PWM_EN = hps_pwm;
-
+//////////////////////////////////////////////////////////////////
 
 wire [1:0] ar = status[2:1];
 wire [1:0] scandoubler_fx = status[4:3];
 wire [1:0] scale = status[6:5];
 
-//
-// CONF_STR for OSD and other settings
-//
+//assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
+//assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 
-`include "build_id.v"
+`include "build_id.v" 
 localparam CONF_STR = {
    "Groovy;;",
    "-;",   
@@ -207,10 +223,10 @@ localparam CONF_STR = {
    "d1P1O[11],240p Crop,Off,On;",
    "d2P1O[16:12],Crop Offset,0,1,2,3,4,5,6,7,8,-8,-7,-6,-5,-4,-3,-2,-1;",     
    "P1-;",  
-   "P1O[21:17],Analog Video H-Pos,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1;",  
-   "P1O[26:22],Analog Video V-Pos,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1;",  
+   "P1O[21:17],Analog video H-Pos,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1;",  
+   "P1O[26:22],Analog video V-Pos,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1;",  
    "P1-;",
-   "P1O[32],Volatile Framebuffer,Off,On;", 
+   "P1O[32],Volatile framebuffer,Off,On;", 
    "P1O[37],PWM,Off,On;",
    "P2,Audio Settings;",
    "P2O[34],Audio,Off,On;",
@@ -219,7 +235,9 @@ localparam CONF_STR = {
    "P3,Server Settings (restart);",
    "P3O[28:27],Verbose,Off,1,2,3;",
    "P3O[29],Blit at,ASAP,End Line;",       
-	"P3O[42],Jumbo Frames (Max MTU),Off,On;",
+	"P3O[42],Jumbo frames (Max MTU),Off,On;",
+	"P3O[43],Server type,UDP,XDP;",
+	"P3O[45:44],ARM clock,Stock,+200Mhz,+400Mhz;",
    "P3-;",
    "P3O[33],Screensaver,On,Off;",	
    "P3-;",
@@ -227,11 +245,16 @@ localparam CONF_STR = {
    "P3O[41:40],Send Joysticks,Off,Digital,Analog;",
    "-;",
    "J1,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9, Button 10;",        
-   "J2,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9, Button 10;",        
+   "J2,Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8, Button 9, Button 10;",  
+   //"-;",
+   //"-;",
+   //"T[0],Reset;",
+   //"R[0],Reset and close OSD;",  
+   //"v,0;", // [optional] config version 0-99. 
+	   // If CONF_STR options are changed in incompatible way, then change version number too,
+	   // so all options will get default values on first start.    
    "V,v",`BUILD_DATE
-
 };
-
 
 //
 // HPS is the module that communicates between the linux and fpga
@@ -258,29 +281,31 @@ wire        hps_pwm = status[37];
 wire [1:0]  hps_kbd_inputs = status[39:38];
 wire [1:0]  hps_joy_inputs = status[41:40];
 wire        hps_jumbo_frames = status[42];
+wire        hps_server_type = status[43];
+wire [1:0]  hps_arm_clock = status[45:44];
 
-wire [43:0] status;
+wire [46:0] status;
 wire [31:0] joy0;
 wire [31:0] joy1;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
- .clk_sys(clk_sys),
- .HPS_BUS(HPS_BUS),
- .EXT_BUS(EXT_BUS),
- .gamma_bus(gamma_bus),
- .direct_video(direct_video),
+ 	.clk_sys(clk_sys),
+ 	.HPS_BUS(HPS_BUS),
+ 	.EXT_BUS(EXT_BUS),
+ 	.gamma_bus(gamma_bus),
+ 	.direct_video(direct_video),
  
- .forced_scandoubler(forced_scandoubler),
- .new_vmode(new_vmode),
- .video_rotated(video_rotated),
+ 	.forced_scandoubler(forced_scandoubler),
+ 	.new_vmode(new_vmode),
+ 	.video_rotated(video_rotated),
  
- .buttons(buttons),
- .status(status),
- .status_menumask({crop_240p, allow_crop_240p, direct_video}),
+ 	.buttons(buttons),
+ 	.status(status),
+ 	.status_menumask({crop_240p, allow_crop_240p, direct_video}),
         
- .joystick_0(joy0),
- .joystick_1(joy1)
+ 	.joystick_0(joy0),
+ 	.joystick_1(joy1)
      
 );
 
@@ -306,6 +331,8 @@ hps_ext hps_ext
         .hps_joy_inputs(hps_joy_inputs),
         .hps_audio(hps_audio),  
 		  .hps_jumbo_frames(hps_jumbo_frames),
+		  .hps_server_type(hps_server_type),
+		  .hps_arm_clock(hps_arm_clock),
         .sound_rate(sound_rate),
         .sound_chan(sound_chan),
         .rgb_mode(rgb_mode),
@@ -350,9 +377,7 @@ hps_ext hps_ext
       
 );
 
-/////////////////////////////////////////////////////////
-//  PLL - clocks are the most important part of a system
-/////////////////////////////////////////////////////////
+///////////////////////   CLOCKS   ///////////////////////////////
 
 wire clk_sys, pll_locked;
 
@@ -435,6 +460,7 @@ end
 
 //reg pll_init_locked = 0;
 //wire reset = RESET | buttons[1] | ~pll_init_locked;
+//wire reset = RESET | status[0] | buttons[1];
 
 /////////////////////// PIXEL CLOCK/////////////////////////////////////
 
@@ -453,6 +479,8 @@ end
 always @(posedge clk_sys) begin
     ce_pix <= cencnt == 4'd0;  
 end
+
+
 
 
 
