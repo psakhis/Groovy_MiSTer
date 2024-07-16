@@ -12,7 +12,7 @@ https://youtu.be/H0175WJFpUs
 - Connect with GB ethernet (direct connection recommended)
 - Audio stream
 - Inputs stream (keyboard, mouse, 2 joypads)
-- XDP server 
+- XDP server (high performance network server)
 - [History](https://github.com/psakhis/Groovy_MiSTer/blob/main/history.txt)
 
 ## Installation (transfers in binary mode!)
