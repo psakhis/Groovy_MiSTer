@@ -21,6 +21,7 @@ https://youtu.be/H0175WJFpUs
 - Edit MiSTer.ini and add custom binary at end of file
   
   [Groovy]
+  
   main=MiSTer_groovy
   
 ## Emulators available
