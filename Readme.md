@@ -53,7 +53,7 @@ https://youtu.be/H0175WJFpUs
     *autosync 0 on mame.ini for menu (60hz)
     *MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
     
-### [emu4crt](https://github.com/psakhis/emu4crt) 
+### [emu4crt](https://github.com/psakhis/emu4crt/releases) 
   Mednafen fork, on mednafen.cfg set:
   
     mister.host 192.x.x.x
