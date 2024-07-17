@@ -49,7 +49,7 @@ https://youtu.be/H0175WJFpUs
     *Automatic frame delay is applied with frame delay 0
     -mister_fd_margin 1.5/2.0/3.0 (applies a safe margin with ms to auto frame delay)
 
-    *Change "uifont default" to "uifont uismall.bdf" on mame.ini for pixel perfect menu
+    *Change "uifont default" to "uifont [uismall.bdf](https://github.com/psakhis/Groovy_MiSTer/tree/main/groovymame)" on mame.ini for pixel perfect menu
     *autosync 0 on mame.ini for menu (60hz)
     *MAC builds from https://github.com/djfumberger/GroovyMAME/releases/tag/2024Jan19
     
