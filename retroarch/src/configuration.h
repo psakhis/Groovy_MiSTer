@@ -228,6 +228,7 @@ typedef struct settings
       unsigned crt_switch_resolution;
       unsigned crt_switch_resolution_super;
       unsigned mister_lz4;
+      unsigned mister_mtu;
       unsigned screen_brightness;
       unsigned video_monitor_index;
       unsigned video_fullscreen_x;

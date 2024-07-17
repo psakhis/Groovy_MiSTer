@@ -2320,7 +2320,8 @@ ifeq ($(HAVE_MISTER), 1)
           $(DEPS_DIR)/mister/groovymister.o \
           $(DEPS_DIR)/mister/groovymister_wrapper.o \
           gfx/gfx_mister.o \
-          input/drivers_joypad/mister_joypad.o 
+          input/drivers_joypad/mister_joypad.o \
+          input/drivers/mister_input.o
 endif
 
 ifeq ($(HAVE_COMPRESSION), 1)

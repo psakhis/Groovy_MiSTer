@@ -32,6 +32,7 @@
 typedef struct _mister_joypad
 {
    uint16_t map;
+   int16_t axis[4];
    unsigned num_axes;
    unsigned num_buttons;
    unsigned num_hats;
@@ -45,13 +46,13 @@ static const char *mister_joypad_name(unsigned pad)
    if (pad >= MAX_USERS_MISTER)
       return NULL;
    
-   return "MiSTer";     
+   return "MiSTer";
 }
 
 static int32_t mister_pad_get_button(mister_joypad_t *pad, uint16_t joykey)
-{	 
+{ 
   switch(joykey)
-  {  
+  {
       case RETRO_DEVICE_ID_JOYPAD_UP:
          return (int32_t)(pad->map & GMW_JOY_UP);
       case RETRO_DEVICE_ID_JOYPAD_DOWN:
@@ -59,15 +60,15 @@ static int32_t mister_pad_get_button(mister_joypad_t *pad, uint16_t joykey)
       case RETRO_DEVICE_ID_JOYPAD_LEFT:
          return (int32_t)(pad->map & GMW_JOY_LEFT);
       case RETRO_DEVICE_ID_JOYPAD_RIGHT:
-         return (int32_t)(pad->map & GMW_JOY_RIGHT);  	
+         return (int32_t)(pad->map & GMW_JOY_RIGHT);
       case RETRO_DEVICE_ID_JOYPAD_B:
          return (int32_t)(pad->map & GMW_JOY_B1);
       case RETRO_DEVICE_ID_JOYPAD_A:
          return (int32_t)(pad->map & GMW_JOY_B2);
       case RETRO_DEVICE_ID_JOYPAD_Y:
-         return (int32_t)(pad->map & GMW_JOY_B3);   
-      case RETRO_DEVICE_ID_JOYPAD_X:         
-         return (int32_t)(pad->map & GMW_JOY_B4);   
+         return (int32_t)(pad->map & GMW_JOY_B3);
+      case RETRO_DEVICE_ID_JOYPAD_X:
+         return (int32_t)(pad->map & GMW_JOY_B4);
       case RETRO_DEVICE_ID_JOYPAD_SELECT:
          return (int32_t)(pad->map & GMW_JOY_B5);
       case RETRO_DEVICE_ID_JOYPAD_START:
@@ -75,32 +76,32 @@ static int32_t mister_pad_get_button(mister_joypad_t *pad, uint16_t joykey)
       case RETRO_DEVICE_ID_JOYPAD_L:
          return (int32_t)(pad->map & GMW_JOY_B7);
       case RETRO_DEVICE_ID_JOYPAD_R:
-         return (int32_t)(pad->map & GMW_JOY_B8);      
+         return (int32_t)(pad->map & GMW_JOY_B8);
       case RETRO_DEVICE_ID_JOYPAD_L2:
          return (int32_t)(pad->map & GMW_JOY_B9);
       case RETRO_DEVICE_ID_JOYPAD_R2:
-         return (int32_t)(pad->map & GMW_JOY_B10);         
-  }	
+         return (int32_t)(pad->map & GMW_JOY_B10);
+  }
   return 0;
 }
 
 static void mister_pad_connect(unsigned id)
 {
-   mister_joypad_t *pad       = (mister_joypad_t*)&mister_pads[id];  
+   mister_joypad_t *pad       = (mister_joypad_t*)&mister_pads[id];
    int32_t product            = 0x9999;
    int32_t vendor             = 0x9999;
 
    input_autoconfigure_connect(
          mister_joypad_name(id),
-         NULL,       
+         NULL,
          mister_joypad.ident,
          id,
          vendor,
          product);
 
-   pad->num_axes    = 0;
+   pad->num_axes    = 4;
    pad->num_buttons = 10;
-   pad->num_hats    = 1;   
+   pad->num_hats    = 1;
 }
 
 static void mister_pad_disconnect(unsigned id)
@@ -138,7 +139,7 @@ static int32_t mister_joypad_button_state(
       mister_joypad_t *pad,
       unsigned port, uint16_t joykey)
 {
-   return mister_pad_get_button(pad, joykey);  
+   return mister_pad_get_button(pad, joykey);
 }
 
 static int32_t mister_joypad_button(unsigned port, uint16_t joykey)
@@ -155,13 +156,24 @@ static int16_t mister_joypad_axis_state(
       mister_joypad_t *pad,
       unsigned port, uint32_t joyaxis)
 {
-  return 0;
+	if (AXIS_NEG_GET(joyaxis) < pad->num_axes)
+	{
+		return ((pad->axis[AXIS_NEG_GET(joyaxis)] << 8) + pad->axis[AXIS_NEG_GET(joyaxis)]);
+		//RARCH_LOG("[MiSTer] joyaxis neg %d...\n", AXIS_NEG_GET(joyaxis));
+	}
+	else if (AXIS_POS_GET(joyaxis) < pad->num_axes)
+	{
+		return ((pad->axis[AXIS_POS_GET(joyaxis)] << 8) + pad->axis[AXIS_POS_GET(joyaxis)]);
+		//RARCH_LOG("[MiSTer] joyaxis pos %d...\n", AXIS_POS_GET(joyaxis));
+	}
+	
+	return 0;
 }
 
 static int16_t mister_joypad_axis(unsigned port, uint32_t joyaxis)
 {
    mister_joypad_t *pad = (mister_joypad_t*)&mister_pads[port];
-   if (!pad || !pad->map)
+   if (!pad)
       return 0;
    return mister_joypad_axis_state(pad, port, joyaxis);
 }
@@ -194,7 +206,7 @@ static int16_t mister_joypad_state(
          )
          ret |= ( 1 << i);
       else if (joyaxis != AXIS_NONE &&
-            ((float)abs(mister_joypad_axis_state(pad, port_idx, joyaxis)) 
+            ((float)abs(mister_joypad_axis_state(pad, port_idx, joyaxis))
              / 0x8000) > joypad_info->axis_threshold)
          ret |= (1 << i);
    }
@@ -203,14 +215,25 @@ static int16_t mister_joypad_state(
 }
 
 static void mister_joypad_poll(void)
-{   	 
-   gmw_pollInputs(); 
-   gmw_fpgaInputs inputs;
-   gmw_getInputs(&inputs);
-   mister_joypad_t *pad1 = (mister_joypad_t*)&mister_pads[0];
-   mister_joypad_t *pad2 = (mister_joypad_t*)&mister_pads[1];
-   pad1->map = inputs.joy1;
-   pad2->map = inputs.joy2;      
+{  
+   if (config_get_ptr()->bools.video_mister_enable)
+   {	 
+	   gmw_pollInputs(); 
+	   gmw_fpgaJoyInputs joyInputs;
+	   gmw_getJoyInputs(&joyInputs);
+	   mister_joypad_t *pad1 = (mister_joypad_t*)&mister_pads[0];
+	   mister_joypad_t *pad2 = (mister_joypad_t*)&mister_pads[1];
+	   pad1->map = joyInputs.joy1;
+	   pad1->axis[0] = joyInputs.joy1LXAnalog;
+	   pad1->axis[1] = joyInputs.joy1LYAnalog;
+	   pad1->axis[2] = joyInputs.joy1RXAnalog;
+	   pad1->axis[3] = joyInputs.joy1RYAnalog;
+	   pad2->map = joyInputs.joy2;   
+	   pad2->axis[0] = joyInputs.joy2LXAnalog;
+	   pad2->axis[1] = joyInputs.joy2LYAnalog;
+	   pad2->axis[2] = joyInputs.joy2RXAnalog;
+	   pad2->axis[3] = joyInputs.joy2RYAnalog;    
+   }	     
 }
 
 

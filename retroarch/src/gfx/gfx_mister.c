@@ -180,7 +180,12 @@ void mister_draw(video_driver_state_t *video_st, const void *data, unsigned widt
       stretched = mister_mode.is_stretched;
    }
 
-   if (x_scale != 1.0 || y_scale != 1.0)
+   if (is_hw_rendered)
+   {
+      width *= x_scale;
+      height *= y_scale;
+   }
+   else if (x_scale != 1.0 || y_scale != 1.0)
    {
       uint32_t scaler_width  = round(width * x_scale);
       uint32_t scaler_height = round(height * y_scale);
@@ -400,8 +405,8 @@ static void mister_init(const char* mister_host, uint8_t compression, uint32_t s
    mister_video.interlaced = 0;
    mister_video.rgb_mode = (pix_fmt == RETRO_PIXEL_FORMAT_RGB565 || settings->bools.mister_force_rgb565) ? RGB565 : RGB888;
 
-   RARCH_LOG("[MiSTer] Sending CMD_INIT... lz4 %d sound_rate %d sound_chan %d rgb_mode %d\n", compression, sound_rate, sound_channels, mister_video.rgb_mode);
-   gmw_init(mister_host, compression, sound_rate, sound_channels, mister_video.rgb_mode);
+   RARCH_LOG("[MiSTer] Sending CMD_INIT... lz4 %d sound_rate %d sound_chan %d rgb_mode %d mtu %d\n", compression, sound_rate, sound_channels, mister_video.rgb_mode, settings->uints.mister_mtu);
+   gmw_init(mister_host, compression, sound_rate, sound_channels, mister_video.rgb_mode, settings->uints.mister_mtu);
 
    mister_video.is_connected = true;
 
@@ -525,6 +530,10 @@ static void mister_switchres(sr_mode *srm)
 
 static void mister_resize_viewport(video_driver_state_t *video_st, unsigned width, unsigned height)
 {
+   double x_scale, y_scale;
+   x_scale = (retroarch_get_rotation() & 1) ? mister_mode.y_scale : mister_mode.x_scale;
+   y_scale = (retroarch_get_rotation() & 1) ? mister_mode.x_scale : mister_mode.y_scale;
+
    if (string_is_equal(video_driver_get_ident(), "gl"))
    {
       gl2_t *gl = (gl2_t*)video_st->data;
@@ -532,8 +541,8 @@ static void mister_resize_viewport(video_driver_state_t *video_st, unsigned widt
       gl->video_height = height;
       gl->vp.width = width;
       gl->vp.height = height;
-      gl->pbo_readback_scaler.out_width = width;
-      gl->pbo_readback_scaler.out_height = height;
+      gl->pbo_readback_scaler.out_width = width * x_scale;
+      gl->pbo_readback_scaler.out_height = height * y_scale;
       gl->pbo_readback_scaler.in_width = width;
       gl->pbo_readback_scaler.in_height = height;
       gl->pbo_readback_scaler.in_stride = width * sizeof(uint32_t);
@@ -546,8 +555,8 @@ static void mister_resize_viewport(video_driver_state_t *video_st, unsigned widt
       gl->video_height = height;
       gl->vp.width = width;
       gl->vp.height = height;
-      gl->pbo_readback_scaler.out_width = width;
-      gl->pbo_readback_scaler.out_height = height;
+      gl->pbo_readback_scaler.out_width = width * x_scale;
+      gl->pbo_readback_scaler.out_height = height * y_scale;
       gl->pbo_readback_scaler.in_width = width;
       gl->pbo_readback_scaler.in_height = height;
       gl->pbo_readback_scaler.in_stride = width * sizeof(uint32_t);
@@ -562,21 +571,21 @@ static void mister_resize_viewport(video_driver_state_t *video_st, unsigned widt
       vk->vp.height = height;
       vk->readback.scaler_bgr.in_width    = width;
       vk->readback.scaler_bgr.in_height   = height;
-      vk->readback.scaler_bgr.out_width   = width;
-      vk->readback.scaler_bgr.out_height  = height;
+      vk->readback.scaler_bgr.out_width   = width * x_scale;
+      vk->readback.scaler_bgr.out_height  = height * y_scale;
       vk->readback.scaler_bgr.in_stride   = width * sizeof(uint32_t);
       vk->readback.scaler_bgr.out_stride  = width * 3;
-      vk->readback.scaler_bgr.in_fmt      = SCALER_FMT_ARGB8888;
+      vk->readback.scaler_bgr.in_fmt      = SCALER_FMT_ABGR8888;
       vk->readback.scaler_bgr.out_fmt     = SCALER_FMT_BGR24;
       vk->readback.scaler_bgr.scaler_type = SCALER_TYPE_POINT;
 
       vk->readback.scaler_rgb.in_width    = width;
       vk->readback.scaler_rgb.in_height   = height;
-      vk->readback.scaler_rgb.out_width   = width;
-      vk->readback.scaler_rgb.out_height  = height;
+      vk->readback.scaler_rgb.out_width   = width * x_scale;
+      vk->readback.scaler_rgb.out_height  = height * y_scale;
       vk->readback.scaler_rgb.in_stride   = width * sizeof(uint32_t);
       vk->readback.scaler_rgb.out_stride  = width * 3;
-      vk->readback.scaler_rgb.in_fmt      = SCALER_FMT_ABGR8888;
+      vk->readback.scaler_rgb.in_fmt      = SCALER_FMT_ARGB8888;
       vk->readback.scaler_rgb.out_fmt     = SCALER_FMT_BGR24;
       vk->readback.scaler_rgb.scaler_type = SCALER_TYPE_POINT;
    }

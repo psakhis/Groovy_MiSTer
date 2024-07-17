@@ -909,7 +909,7 @@ int normalize(int a, int b)
 	if (c) d++;
 	return d * b;
 */
-        return a; //psakhis	
+        return a;  //psakhis	
 }
 
 //============================================================

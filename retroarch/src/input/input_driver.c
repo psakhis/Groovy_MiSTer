@@ -364,6 +364,9 @@ input_driver_t *input_drivers[] = {
 #ifdef DJGPP
    &input_dos,
 #endif
+#ifdef HAVE_MISTER //psakhis
+   &input_mister,
+#endif
    &input_null,
    NULL,
 };
@@ -3643,6 +3646,7 @@ void *input_driver_init_wrap(input_driver_t *input, const char *name)
    void *ret                   = NULL;
    if (!input)
       return NULL;
+  
    if ((ret = input->init(name)))
    {
       input_driver_init_joypads();
@@ -3893,6 +3897,7 @@ bool video_driver_init_input(
 {
    void              *new_data    = NULL;
    input_driver_t         **input = &input_driver_st.current_driver;
+  
    if (*input)
       return true;
 
@@ -6379,9 +6384,9 @@ void input_driver_collect_system_input(input_driver_state_t *input_st,
             ids[0][1] = RETRO_DEVICE_ID_JOYPAD_B;
             ids[1][1] = RETRO_DEVICE_ID_JOYPAD_A;
          }
-
+         
          for (i = 0; i < ARRAY_SIZE(ids); i++)
-         {
+         { 
             if (ids[i][0] && current_input->input_state(
                      input_st->current_data,
                      joypad,
