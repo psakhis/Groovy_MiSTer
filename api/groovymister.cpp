@@ -102,6 +102,7 @@ GroovyMister::GroovyMister()
 	m_frameTime = 0;
 	m_streamTime = 0;
 	m_emulationTime = 0;
+	m_mtu = 0;
 
 	memset(&m_tickStart, 0, sizeof(m_tickStart));
 	memset(&m_tickEnd, 0, sizeof(m_tickEnd));
@@ -160,8 +161,10 @@ const char* GroovyMister::getVersion()
 	return &GROOVYMISTER_VERSION[0];
 }
 
-uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode)
+uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu)
 {
+	m_mtu = (!mtu) ? BUFFER_MTU : mtu - MTU_HEADER;
+	
 	// Set server
 	m_serverAddr.sin_family = AF_INET;
 	m_serverAddr.sin_port = htons(misterPort);
@@ -183,12 +186,19 @@ uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8
 	if (USE_RIO)
 	{
 		LOG(0, "[MiSTer] Initialising socket registered io %s...\n","");
-		m_sockFD = ::WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_REGISTERED_IO);
+		m_sockFD = ::WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_NO_HANDLE_INHERIT | WSA_FLAG_OVERLAPPED | WSA_FLAG_REGISTERED_IO);
 		if (m_sockFD == INVALID_SOCKET)
 		{
 			LOG(0,"[MiSTer] Could not create socket : %lu", ::GetLastError());
-		}
-
+		}	        
+   
+		DWORD val = 1;
+		rc = setsockopt(m_sockFD, IPPROTO_IP, IP_DONTFRAGMENT, (char *)&val, sizeof(val));
+		if (rc != 0)
+		{
+		        LOG(0,"[MiSTer] Could not create IP_DONTFRAGMENT : %lu", ::GetLastError());
+		}   		
+ 	
 		LOG(0,"[MiSTer] Setting WSAIoctl %s...\n","");
 		GUID functionTableId = WSAID_MULTIPLE_RIO;
 		DWORD dwBytes = 0;
@@ -200,8 +210,8 @@ uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8
 		m_hIOCP = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 0) ;
 		if (NULL == m_hIOCP)
 		{
-			LOG(0,"[MiSTer] Could not create IoCompletionPort : %lu", ::GetLastError());
-		}
+			LOG(0,"[MiSTer] Could not create m_hIOCP IoCompletionPort : %lu", ::GetLastError());
+		}		
 
 		OVERLAPPED overlapped;
 			ZeroMemory(&overlapped, sizeof(overlapped));
@@ -249,13 +259,13 @@ uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8
 		m_pBufsBlit = new RIO_BUF[BUFFER_SLICES];
 		for (DWORD i = 0; i < BUFFER_SLICES; ++i)
 		{
-		   RIO_BUF *pBuffer = m_pBufsBlit + i;
+		   	RIO_BUF *pBuffer = m_pBufsBlit + i;
 
 			pBuffer->BufferId = m_sendRioBufferBlitId;
 			pBuffer->Offset = offset;
-			pBuffer->Length = BUFFER_MTU;
+			pBuffer->Length = m_mtu;
 
-			offset += BUFFER_MTU;
+			offset += m_mtu;
 		}
 
 		m_sendRioBufferAudioId = m_rio.RIORegisterBuffer(pBufferAudio, BUFFER_SIZE);
@@ -271,9 +281,9 @@ uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8
 
 			pBuffer->BufferId = m_sendRioBufferAudioId;
 			pBuffer->Offset = offset;
-			pBuffer->Length = BUFFER_MTU;
+			pBuffer->Length = m_mtu;
 
-			offset += BUFFER_MTU;
+			offset += m_mtu;
 		}
 
 		LOG(0,"[MiSTer] Create queues %s...\n","");
@@ -360,7 +370,7 @@ uint8_t GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, uint8
 	}
 #endif
 
-	LOG(0,"[MiSTer] Sending CMD_INIT...lz4 %d sound_rate %d sound_chan %d\n", lz4Frames, soundRate, soundChan);
+	LOG(0,"[MiSTer] Sending CMD_INIT...lz4 %d sound_rate %d sound_chan %d rgb_mode %d mtu %d\n", lz4Frames, soundRate, soundChan, rgbMode, mtu);
 
 	m_lz4Frames = lz4Frames;
 	m_soundChan = soundChan;
@@ -447,22 +457,23 @@ void GroovyMister::CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
 
 	uint32_t cSize = 0;
 	uint32_t bytesToSend = 0;
+		
 	switch (m_lz4Frames)
 	{
 		case(3):
 		case(1): cSize = LZ4_compress_default((char *)&pBufferBlit[0], m_pBufferLZ4, m_RGBSize, m_RGBSize);
-				 break;
+		         break;
 		case(2): cSize = LZ4_compress_HC((char *)&pBufferBlit[0], m_pBufferLZ4, m_RGBSize, m_RGBSize, LZ4HC_CLEVEL_DEFAULT);
 			 break;
 	}
-	
+
 	if (m_lz4Frames == 3 && cSize > LZ4_ADAPTATIVE_CSIZE)
 	{
-		cSize = LZ4_compress_HC((char *)&pBufferBlit[0], m_pBufferLZ4, m_RGBSize, m_RGBSize, LZ4HC_CLEVEL_DEFAULT);	
+		cSize = LZ4_compress_HC((char *)&pBufferBlit[0], m_pBufferLZ4, m_RGBSize, m_RGBSize, LZ4HC_CLEVEL_DEFAULT);
 		m_lz4Frames = 2;
 		LOG(0,"[MiSTer] LZ4 Adaptative apply LZ4HC on frame %d\n", frame);
 	}
-	
+
 	m_bufferSend[0] = CMD_BLIT_VSYNC;
 	memcpy(&m_bufferSend[1], &frame, sizeof(frame));
 	memcpy(&m_bufferSend[5], &vSync, sizeof(vSync));
@@ -482,7 +493,7 @@ void GroovyMister::CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
 	SendStream(0, bytesToSend, cSize);
 	setTimeEnd();
 	m_streamTime = DiffTime();
-	//printf("[DEBUG] Stream time %lu\n",m_streamTime);
+	//printf("[DEBUG] Stream time , frame %d -> %lu\n",m_frame, m_streamTime);
 }
 
 void GroovyMister::CmdAudio(uint16_t soundSize)
@@ -637,7 +648,7 @@ void GroovyMister::BindInputs(const char* misterHost, uint16_t misterPort)
 	// Set server
 	m_serverAddrInputs.sin_family = AF_INET;
 	m_serverAddrInputs.sin_port = htons(misterPort);
-	m_serverAddrInputs.sin_addr.s_addr = inet_addr(misterHost);	
+	m_serverAddrInputs.sin_addr.s_addr = inet_addr(misterHost);
 	// Set socket
 #ifdef _WIN32
 	WSADATA wsd;
@@ -698,7 +709,7 @@ void GroovyMister::PollInputs(void)
 	socklen_t sServerAddr = sizeof(struct sockaddr);
 	int len = 0;
 	do
-	{  	//Mednafen::MDFN_printf(_("GGGGGGGGGGGGGGGGGGGGGGGG...\n"));
+	{
 		len = recvfrom(m_sockInputsFD, m_bufferInputsReceive, sizeof(m_bufferInputsReceive), 0, (struct sockaddr *)&m_serverAddrInputs, &sServerAddr);			
 		if (len == 9 || len == 17) //blit joystick digital or analog
 		{
@@ -794,21 +805,21 @@ void GroovyMister::SendStream(uint8_t whichBuffer, uint32_t bytesToSend, uint32_
 	uint32_t bytesSended = 0;
 #ifdef _WIN32
 if (USE_RIO)
-{
+{				
 	int i=0;
 	while (bytesSended < bytesToSend)
 	{
 		if (whichBuffer == 0)
-		{
-			m_pBufsBlit[i].Length = (bytesToSend - bytesSended >= BUFFER_MTU) ? BUFFER_MTU : bytesToSend - bytesSended;
+		{			
+			m_pBufsBlit[i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
 			m_rio.RIOSend(m_requestQueue, &m_pBufsBlit[i], 1, flags, &m_pBufsBlit[i]);
-		}
+		}	
 		else
 		{
-			m_pBufsAudio[i].Length = (bytesToSend - bytesSended >= BUFFER_MTU) ? BUFFER_MTU : bytesToSend - bytesSended;
+			m_pBufsAudio[i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
 			m_rio.RIOSend(m_requestQueue, &m_pBufsAudio[i], 1, flags, &m_pBufsAudio[i]);
 		}
-		bytesSended += BUFFER_MTU;
+		bytesSended += m_mtu;
 		i++;
 	}
 	m_rio.RIOSend(m_requestQueue, NULL, 0, RIO_MSG_COMMIT_ONLY, NULL);
@@ -817,7 +828,7 @@ if (USE_RIO)
 #endif
 	while (bytesSended < bytesToSend)
 	{
-		uint32_t chunkSize = (bytesToSend - bytesSended >= BUFFER_MTU) ? BUFFER_MTU : bytesToSend - bytesSended;
+		uint32_t chunkSize = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
 		if (whichBuffer == 0)
 		{
 			if (cSize > 0)
@@ -833,7 +844,7 @@ if (USE_RIO)
 		{
 			Send(&pBufferAudio[bytesSended], chunkSize);
 		}
-		bytesSended += BUFFER_MTU;
+		bytesSended += m_mtu;
 	}
 }
 
@@ -952,7 +963,7 @@ void GroovyMister::setFpgaPS2(int len)
 		memcpy(&ps2Inputs.ps2MouseZ, &m_bufferInputsReceive[40], 1);
 		bitByte bits;
 		bits.byte = ps2Inputs.ps2Mouse;
-		LOG(0, "[MiSTer] MOUSE [yo=%d,xo=%d,ys=%d,xs=%d,1=%d,bm=%d,br=%d,bl=%d][x=%d,y=%d,z=%d]\n", bits.u.bit7, bits.u.bit6, bits.u.bit5, bits.u.bit4, bits.u.bit3, bits.u.bit2, bits.u.bit1, bits.u.bit0, ps2Inputs.ps2MouseX, ps2Inputs.ps2MouseY, ps2Inputs.ps2MouseZ);	
+		LOG(2, "[MiSTer] MOUSE [yo=%d,xo=%d,ys=%d,xs=%d,1=%d,bm=%d,br=%d,bl=%d][x=%d,y=%d,z=%d]\n", bits.u.bit7, bits.u.bit6, bits.u.bit5, bits.u.bit4, bits.u.bit3, bits.u.bit2, bits.u.bit1, bits.u.bit0, ps2Inputs.ps2MouseX, ps2Inputs.ps2MouseY, ps2Inputs.ps2MouseZ);	
 	}	
 }
 

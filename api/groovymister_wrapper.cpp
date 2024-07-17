@@ -19,14 +19,14 @@ extern "C" {
 GroovyMister* gmw;
 int gmw_inputsBinded;
 
-MODULE_API_GMW void gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode)
+MODULE_API_GMW void gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu)
 {
 	if (gmw == NULL)
 	{
 		gmw = new GroovyMister;
-		gmw_inputsBinded = 0;		
+		gmw_inputsBinded = 0;
 	}
-	gmw->CmdInit(misterHost, 32100, lz4Frames, soundRate, soundChan, rgbMode);
+	gmw->CmdInit(misterHost, 32100, lz4Frames, soundRate, soundChan, rgbMode, mtu);
 }
 
 MODULE_API_GMW void gmw_close(void)
@@ -203,14 +203,14 @@ MODULE_API_GMW void gmw_getJoyInputs(gmw_fpgaJoyInputs* joyInputs)
 		joyInputs->joyOrder     = gmw->joyInputs.joyOrder;
 		joyInputs->joy1         = gmw->joyInputs.joy1;
 		joyInputs->joy2         = gmw->joyInputs.joy2;
-		joyInputs->joy1LXAnalog = gmw->joyInputs.joy1LXAnalog; 	
-		joyInputs->joy1LYAnalog = gmw->joyInputs.joy1LYAnalog; 	
-		joyInputs->joy1RXAnalog = gmw->joyInputs.joy1RXAnalog; 	
-		joyInputs->joy1RYAnalog = gmw->joyInputs.joy1RYAnalog; 	
-		joyInputs->joy2LXAnalog = gmw->joyInputs.joy2LXAnalog; 	
-		joyInputs->joy2LYAnalog = gmw->joyInputs.joy2LYAnalog; 	
-		joyInputs->joy2RXAnalog = gmw->joyInputs.joy2RXAnalog; 	
-		joyInputs->joy2RYAnalog = gmw->joyInputs.joy2RYAnalog; 	
+		joyInputs->joy1LXAnalog = gmw->joyInputs.joy1LXAnalog;
+		joyInputs->joy1LYAnalog = gmw->joyInputs.joy1LYAnalog;
+		joyInputs->joy1RXAnalog = gmw->joyInputs.joy1RXAnalog;
+		joyInputs->joy1RYAnalog = gmw->joyInputs.joy1RYAnalog;
+		joyInputs->joy2LXAnalog = gmw->joyInputs.joy2LXAnalog;
+		joyInputs->joy2LYAnalog = gmw->joyInputs.joy2LYAnalog;
+		joyInputs->joy2RXAnalog = gmw->joyInputs.joy2RXAnalog;
+		joyInputs->joy2RYAnalog = gmw->joyInputs.joy2RYAnalog;
 	}
 	else
 	{
@@ -225,7 +225,7 @@ MODULE_API_GMW void gmw_getPS2Inputs(gmw_fpgaPS2Inputs* ps2Inputs)
 	{
 		ps2Inputs->ps2Frame  = gmw->ps2Inputs.ps2Frame;
 		ps2Inputs->ps2Order  = gmw->ps2Inputs.ps2Order;
-		memcpy(&ps2Inputs->ps2Keys, &gmw->ps2Inputs.ps2Keys, sizeof(ps2Inputs->ps2Keys));		   
+		memcpy(&ps2Inputs->ps2Keys, &gmw->ps2Inputs.ps2Keys, sizeof(ps2Inputs->ps2Keys));	   
 		ps2Inputs->ps2Mouse  = gmw->ps2Inputs.ps2Mouse;
 		ps2Inputs->ps2MouseX = gmw->ps2Inputs.ps2MouseX;
 		ps2Inputs->ps2MouseY = gmw->ps2Inputs.ps2MouseY;
@@ -233,7 +233,7 @@ MODULE_API_GMW void gmw_getPS2Inputs(gmw_fpgaPS2Inputs* ps2Inputs)
 	}
 	else
 	{
-		memset(&ps2Inputs, 0, sizeof(ps2Inputs));		
+		memset(&ps2Inputs, 0, sizeof(ps2Inputs));
 		printf("[MiSTer] gmw_getPS2Inputs failed\n");
 	}	
 }

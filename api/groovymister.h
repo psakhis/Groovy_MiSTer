@@ -16,7 +16,8 @@
 
 #define BUFFER_SIZE 1245312 // 720x576x3
 #define BUFFER_SLICES 846
-#define BUFFER_MTU 1472
+#define MTU_HEADER 28
+#define BUFFER_MTU 1500 - MTU_HEADER
 
 //joystick map
 #define GM_JOY_RIGHT (1 << 0)
@@ -84,7 +85,7 @@ class GroovyMister
 {
  public:
 
-	char *pBufferBlit; 	 // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
+	char *pBufferBlit; 	 // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit	
 	char *pBufferAudio; 	 // This buffer are registered and aligned for sending audio. Populate it before CmdAudio
 	fpgaStatus fpga; 	 // Data with last received ACK
 	fpgaJoyInputs joyInputs; // Data with last joystick inputs received
@@ -95,8 +96,8 @@ class GroovyMister
 
 	// Close connection
 	void CmdClose(void);
-	// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc, 3-lz4 adaptative), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565)
-	uint8_t CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode);
+	// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc, 3-lz4 adaptative), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565), mtu source
+	uint8_t CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
 	// Change resolution (check https://github.com/antonioginer/switchres) with modeline
 	void CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
 	// Stream frame, vCountSync = 0 for auto frame delay or number of vertical line to sync with, margin with nanoseconds for auto frame delay)
@@ -149,7 +150,7 @@ class GroovyMister
 	struct timespec m_tickStart;
 	struct timespec m_tickEnd;
 	struct timespec m_tickSync;
-#endif
+#endif       
 	struct sockaddr_in m_serverAddr;
 	struct sockaddr_in m_serverAddrInputs;
 	char m_bufferSend[26];
@@ -168,6 +169,7 @@ class GroovyMister
 	uint32_t m_widthTime;
 	uint32_t m_streamTime;
 	uint32_t m_emulationTime;
+	uint16_t m_mtu;
 
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);
 	void Send(void *cmd, int cmdSize);
