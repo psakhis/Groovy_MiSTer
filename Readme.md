@@ -106,6 +106,8 @@ MiSTer Discord #dev-talk
 
 @wickerwaka for their tips using ddr
 
+@coolbho3k for their [overclock](https://github.com/coolbho3k/MiSTer-Overclock-Scripts)  
+
 @Emulators teams: Mednafen, MAME and Retroarch
 
 @alexxnr for testing it and encourage me in the project
