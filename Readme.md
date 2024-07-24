@@ -13,7 +13,6 @@ https://youtu.be/H0175WJFpUs
 - Audio stream
 - Inputs stream (keyboard, mouse, 2 joypads)
 - Native LZ4 uncompress on FPGA
-- XDP server (high performance network server)
 - [History](https://github.com/psakhis/Groovy_MiSTer/blob/main/history.txt)
 
 ## Installation (transfers in binary mode!)
@@ -24,10 +23,6 @@ https://youtu.be/H0175WJFpUs
   [Groovy]<br />
   main=MiSTer_groovy<br />
   </sub>
-- Only for XDP high performance feature, some tweaks on Linux are needed. For UDP isn't needed.
-  1. Replace kernel: zImage_dtb file on /media/fat/linux (is same [kernel](https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/pull/55) with some patches for eth0 driver and builded with CONFIG_XDP_SOCKETS=Y)
-  2. Save groovy_xdp_kern.o to /usr/lib/arm-linux-gnueabihf/bpf (this program will be injected on eth while xdp is running)
-  3. Save libelf.so.1 on /usr/lib (library requiered) 
 ## Emulators available
 ### [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) <br />
   MAME fork by @Calamity, download mame_mister.ini and rename to mame.ini
