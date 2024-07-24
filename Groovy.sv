@@ -236,7 +236,7 @@ localparam CONF_STR = {
    "P3O[28:27],Verbose,Off,1,2,3;",
    "P3O[29],Blit at,ASAP,End Line;",       
 	"P3O[42],Jumbo frames (Max MTU),Off,On;",
-	"P3O[43],Server type,UDP,XDP;",
+	//"P3O[43],Server type,UDP,XDP;",
 	"P3O[45:44],ARM clock,Stock,+200Mhz,+400Mhz;",
    "P3-;",
    "P3O[33],Screensaver,On,Off;",	
@@ -281,7 +281,8 @@ wire        hps_pwm = status[37];
 wire [1:0]  hps_kbd_inputs = status[39:38];
 wire [1:0]  hps_joy_inputs = status[41:40];
 wire        hps_jumbo_frames = status[42];
-wire        hps_server_type = status[43];
+//wire        hps_server_type = status[43];
+reg         hps_server_type = 1'b0;
 wire [1:0]  hps_arm_clock = status[45:44];
 
 wire [46:0] status;
@@ -715,6 +716,7 @@ reg [7:0]  PoC_ce_pix     = 8'd16;
 
 
 // Interlaced
+reg[23:0]  PoC_frame_interlaced = 24'd0;
 reg        PoC_interlaced = 1'b0;
 reg        PoC_FB_interlaced = 1'b0;
 
@@ -775,20 +777,20 @@ always @(posedge clk_sys) begin
   if ((hps_frameskip || cmd_logo) && PoC_frame_vram != 0) begin
 	   if (vga_vcount <= PoC_interlaced && vram_queue == 24'd0) begin // raster at the end of frame and vram is empty
 	     cmd_fskip             <= 1'b1;
-		    PoC_px_frameskip      <= (PoC_H << PoC_interlaced) + 24'd3;  // sum 3 for ddr_burst round, * 2 for PoC_interlaced with FB progressive
-		    PoC_state_frameskip   <= S_Blit_Auto_First;     
+		  PoC_px_frameskip      <= (PoC_H << PoC_interlaced) + 24'd3;  // sum 3 for ddr_burst round, * 2 for PoC_interlaced with FB progressive
+		  PoC_state_frameskip   <= S_Blit_Auto_First;     
 	   end else
 	   if (!vblank_core) begin
 	     if (vga_vcount + 1 + PoC_interlaced >= PoC_V && PoC_H > vram_queue && vram_queue + 20 < vram_pixels && vga_pixels > vram_pixels && vram_pixels > (PoC_H << 2)) begin // last line interlaced
 		      cmd_fskip           <= 1'b1;
-			     PoC_px_frameskip    <= vga_pixels;
+			   PoC_px_frameskip    <= vga_pixels;
 		      PoC_state_frameskip <= S_Blit_Auto_Line;
-		    end else
-		    if (vga_vcount + 1 + PoC_interlaced < PoC_V && PoC_H > vram_queue && vram_queue + 20 < vram_pixels && ((PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced) > vram_pixels) begin // next line
+		  end else
+		  if (vga_vcount + 1 + PoC_interlaced < PoC_V && PoC_H > vram_queue && vram_queue + 20 < vram_pixels && ((PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced) > vram_pixels) begin // next line
 		      cmd_fskip           <= 1'b1;
-			     PoC_px_frameskip    <= ((PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced) + 24'd3;
+			   PoC_px_frameskip    <= ((PoC_H * (vga_vcount + 10'd1 + PoC_interlaced)) >> PoC_FB_interlaced) + 24'd3;
 		      PoC_state_frameskip <= S_Blit_Auto_Line;
-		    end	
+		  end	
 	   end 
 	 end 
 	  
@@ -846,7 +848,7 @@ always @(posedge clk_sys) begin
            PoC_frame_lz4              <= 24'd0;
            PoC_subframe_lz4_bytes     <= 24'd0;
            PoC_subframe_blit_lz4      <= 16'd0;
-           PoC_frame_lz4_ddr	         <= 24'd0;
+           PoC_frame_lz4_ddr	        <= 24'd0;
            PoC_subframe_lz4_ddr_bytes <= 24'd0;       
            PoC_subframe_blit_lz4_ddr  <= 16'd0;
            PoC_subframe_wr_bytes      <= 28'd0;
@@ -975,6 +977,8 @@ always @(posedge clk_sys) begin
              if (!ddr_busy && vram_req_ready) begin               		 
                ddr_burst    <= PoC_subframe_ddr_bytes - PoC_subframe_vram_bytes > 24'd1023 ? 8'd128 : vga_pixels == PoC_subframe_px_ddr ? ((PoC_subframe_ddr_bytes - PoC_subframe_vram_bytes) >> 3) + 1'b1 : (PoC_subframe_ddr_bytes - PoC_subframe_vram_bytes) >> 3;                 
                ddr_addr     <= PoC_FB_interlaced && PoC_frame_field ? DDR_FD_OFFSET + PoC_subframe_vram_bytes : DDR_FB_OFFSET + PoC_subframe_vram_bytes;
+			  //    ddr_addr     <= PoC_FB_interlaced && (PoC_frame_interlaced + PoC_frame_ddr) % 2 == 1 ? DDR_FD_OFFSET + PoC_subframe_vram_bytes : DDR_FB_OFFSET + PoC_subframe_vram_bytes;
+			  
                ddr_data_req <= 1'b1;                                              
                state        <= S_Blit_Copy_Raw;                                                                                                                
              end   
@@ -1017,7 +1021,7 @@ always @(posedge clk_sys) begin
              PoC_subframe_vram_bytes <= 28'd0;
              PoC_subframe_ddr_bytes  <= 28'd0;
              PoC_frame_rgb_offset    <= 2'd0;         
-             PoC_frame_field	        <= PoC_FB_interlaced ? !PoC_frame_field : 1'b0;	// framebuffer flip/flop 				 
+             PoC_frame_field	       <= PoC_FB_interlaced ? !PoC_frame_field : 1'b0;	// framebuffer flip/flop 				 
              vram_drive_raw          <= 1'b0;            
              state                   <= S_Dispatcher; 
            end else state            <= S_Blit_Prepare_Raw;            
@@ -1105,6 +1109,7 @@ always @(posedge clk_sys) begin
           
              PoC_interlaced    <= ddr_data_tmp[152 +:08] >= 1 ? 1'b1 : 1'b0;                                               
              PoC_FB_interlaced <= ddr_data_tmp[152 +:08] == 1 ? 1'b1 : 1'b0;               
+				// PoC_frame_interlaced <= (vga_frameskip || vga_frameskip_prev) ? PoC_frame_ddr : PoC_frame_ddr + 1'b1;
                  
              vram_reset      <= 1'b1;                                                                                                       
                                             
@@ -1358,7 +1363,7 @@ always @(posedge clk_sys) begin
              if (vram_drive_lz4 && PoC_subframe_px_lz4 >= vga_pixels) begin
                PoC_frame_ddr           <= PoC_frame_lz4_ddr;         
                PoC_frame_vram          <= PoC_frame_lz4_ddr;         
-               PoC_frame_field	        <= PoC_FB_interlaced ? !PoC_frame_field : 1'b0;	// framebuffer flip/flop 	
+               PoC_frame_field	      <= PoC_FB_interlaced ? !PoC_frame_field : 1'b0;	// framebuffer flip/flop 	
                PoC_subframe_px_vram    <= 24'd0;
                PoC_subframe_vram_bytes <= 24'd0;
                PoC_frame_rgb_offset    <= 2'd0;                             		 
