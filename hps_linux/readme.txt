@@ -13,3 +13,10 @@ Full source code [MiSTer_groovy](https://github.com/psakhis/Main_MiSTer)
    ...
 
 This method will execute MiSTer_groovy binary when you start core from _Utility
+
+Dropped for the moment
+
+- Only for XDP high performance feature, some tweaks on Linux are needed. For UDP isn't needed.
+  1. Replace kernel: zImage_dtb file on /media/fat/linux (is same [kernel](https://github.com/MiSTer-devel/Linux-Kernel_MiSTer/pull/55) with some patches for eth0 driver and builded with CONFIG_XDP_SOCKETS=Y)
+  2. Save groovy_xdp_kern.o to /usr/lib/arm-linux-gnueabihf/bpf (this program will be injected on eth while xdp is running)
+  3. Save libelf.so.1 on /usr/lib (library requiered) 
