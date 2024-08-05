@@ -20,6 +20,7 @@
 
 #define UDP_PORT 32100
 #define UDP_PORT_INPUTS 32101
+#define UDP_PORT_GMC 32105
 
 struct {
 	__uint(type, BPF_MAP_TYPE_XSKMAP);
@@ -41,7 +42,7 @@ bool check_ipport(struct pkthdrs hdrs)
 {		
 	if (hdrs.family == AF_INET) 
 	{
-		return ((ntohs(hdrs.udp->dest) == UDP_PORT) || (ntohs(hdrs.udp->dest) == UDP_PORT_INPUTS));		
+		return ((ntohs(hdrs.udp->dest) == UDP_PORT) || (ntohs(hdrs.udp->dest) == UDP_PORT_INPUTS) || (ntohs(hdrs.udp->dest) == UDP_PORT_GMC));		
 	} 
 	else 
 	{

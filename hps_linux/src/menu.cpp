@@ -2186,7 +2186,7 @@ void HandleUI(void)
 						fs_MenuSelect = MENU_GENERIC_FILE_SELECTED;
 						fs_MenuCancel = MENU_GENERIC_MAIN1;
 						strcpy(fs_pFileExt, ext);
-
+						
 						load_addr = 0;
 						if (substrcpy(s, p, 3))
 						{
@@ -2429,7 +2429,7 @@ void HandleUI(void)
 						pcecd_set_image(0, "");
 						pcecd_reset();
 					}
-					if (!store_name) user_io_store_filename(selPath);
+					if (!store_name) user_io_store_filename(selPath);					
 					if (is_n64())
 					{
 						uint32_t n64_crc;
@@ -2438,8 +2438,15 @@ void HandleUI(void)
 					}
 					else
 					{
-						user_io_file_tx(selPath, idx, opensave, 0, 0, load_addr);
-						if (user_io_use_cheats() && !store_name) cheats_init(selPath, user_io_get_file_crc());
+						if (is_groovy())
+						{
+							groovy_user_io_file_gmc(selPath);
+						}
+						else
+						{
+							user_io_file_tx(selPath, idx, opensave, 0, 0, load_addr);
+							if (user_io_use_cheats() && !store_name) cheats_init(selPath, user_io_get_file_crc());
+						}	
 					}
 				}
 

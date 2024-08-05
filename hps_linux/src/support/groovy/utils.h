@@ -268,6 +268,8 @@ const int key2sdl[] =
 
 double diff_in_ms(struct timespec *start, struct timespec *end);  
 void update_iph_checksum(struct iphdr *iph);
+unsigned long sum_udp_checksum(struct iphdr *iph, uint16_t payload_len);
+void compute_udp_checksum(unsigned short *ipPayload, unsigned long sum);
 char* getNet(int spec);
 void setARMClock(uint8_t clock);
 void setRXAffinity(int cpu);

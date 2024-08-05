@@ -55,10 +55,11 @@ module hps_ext
     output reg        cmd_audio = 0,
     input             reset_audio,
     output reg [15:0] audio_samples = 0,
-	   input             reset_blit_lz4,
-	   output reg        cmd_blit_lz4 = 0,
-	   output reg [31:0] lz4_size = 0,
+	 input             reset_blit_lz4,
+	 output reg        cmd_blit_lz4 = 0,
+	 output reg [31:0] lz4_size = 0,
     output reg        lz4_AB = 0,
+	 output reg [1:0]  lz4_field = 0,
     input      [31:0] lz4_uncompressed_bytes
 /* DEBUG
     input      [31:0]  PoC_subframe_wr_bytes,
@@ -85,16 +86,17 @@ wire io_strobe = EXT_BUS[33];
 wire io_enable = EXT_BUS[34];
 
 localparam EXT_CMD_MIN = GET_GROOVY_STATUS;
-localparam EXT_CMD_MAX = SET_BLIT_LZ4;
+localparam EXT_CMD_MAX = SET_BLIT_FIELD_LZ4;
 
-localparam GET_GROOVY_STATUS = 'hf0;
-localparam GET_GROOVY_HPS    = 'hf1;
-localparam SET_INIT          = 'hf2;
-localparam SET_SWITCHRES     = 'hf3;
-localparam SET_BLIT          = 'hf4;
-localparam SET_LOGO          = 'hf5;
-localparam SET_AUDIO         = 'hf6;
-localparam SET_BLIT_LZ4      = 'hf7;
+localparam GET_GROOVY_STATUS  = 'hf0;
+localparam GET_GROOVY_HPS     = 'hf1;
+localparam SET_INIT           = 'hf2;
+localparam SET_SWITCHRES      = 'hf3;
+localparam SET_BLIT           = 'hf4;
+localparam SET_LOGO           = 'hf5;
+localparam SET_AUDIO          = 'hf6;
+localparam SET_BLIT_LZ4       = 'hf7;
+localparam SET_BLIT_FIELD_LZ4 = 'hf8;
 
 reg [15:0] io_dout;
 reg        dout_en = 0;
@@ -143,7 +145,7 @@ always@(posedge clk_sys) begin
         if (reset_switchres) cmd_switchres <= 1'b0;     
         if (reset_blit)      cmd_blit      <= 1'b0;       
         if (reset_audio)     cmd_audio     <= 1'b0;		  			     
-		      if (reset_blit_lz4)  cmd_blit_lz4  <= 1'b0;		  			      
+		  if (reset_blit_lz4)  cmd_blit_lz4  <= 1'b0;		  			      
         
         if(~io_enable) begin
                 dout_en <= 0;
@@ -160,14 +162,15 @@ always@(posedge clk_sys) begin
                 if(byte_cnt == 0) begin
                         cmd <= io_din;
                         dout_en <= (io_din >= EXT_CMD_MIN && io_din <= EXT_CMD_MAX);
-                        if(io_din == GET_GROOVY_STATUS) io_dout <= hps_rise_req;                
-                        if(io_din == GET_GROOVY_HPS)    io_dout <= hps_rise_req;                
-                        if(io_din == SET_INIT)          io_dout <= hps_rise_req;                
-                        if(io_din == SET_SWITCHRES)     io_dout <= hps_rise_req;                                        
-                        if(io_din == SET_BLIT)          io_dout <= hps_rise_req;                                        
-                        if(io_din == SET_LOGO)          io_dout <= hps_rise_req;                                        
-                        if(io_din == SET_AUDIO)         io_dout <= hps_rise_req;                                        
-								                if(io_din == SET_BLIT_LZ4)      io_dout <= hps_rise_req;                          
+                        if(io_din == GET_GROOVY_STATUS)  io_dout <= hps_rise_req;                
+                        if(io_din == GET_GROOVY_HPS)     io_dout <= hps_rise_req;                
+                        if(io_din == SET_INIT)           io_dout <= hps_rise_req;                
+                        if(io_din == SET_SWITCHRES)      io_dout <= hps_rise_req;                                        
+                        if(io_din == SET_BLIT)           io_dout <= hps_rise_req;                                        
+                        if(io_din == SET_LOGO)           io_dout <= hps_rise_req;                                        
+                        if(io_din == SET_AUDIO)          io_dout <= hps_rise_req;                                        
+								if(io_din == SET_BLIT_LZ4)       io_dout <= hps_rise_req;                          
+								if(io_din == SET_BLIT_FIELD_LZ4) io_dout <= hps_rise_req;                          
                 end else begin
               
                         case(cmd)
@@ -272,15 +275,27 @@ always@(posedge clk_sys) begin
                                              end  
                                            endcase 
 														 
-										                      SET_BLIT_LZ4: case(byte_cnt)
+										  SET_BLIT_LZ4: case(byte_cnt)
                                            1: lz4_AB <= io_din[0];
                                            2: lz4_size[15:0] <= io_din;                                          
                                            3:
                                            begin
-                                              lz4_size[31:16] <= io_din;                                            
+                                              lz4_size[31:16] <= io_din;
+                                              lz4_field       <= 2'd2;															 
                                               cmd_blit_lz4    <= 1'b1;
                                            end                                                                                                                  
-                                         endcase 		                                                                
+                                         endcase 		           
+													  
+										  SET_BLIT_FIELD_LZ4: case(byte_cnt)
+                                           1: lz4_AB <= io_din[0];
+                                           2: lz4_size[15:0]  <= io_din;                                          
+                                           3: lz4_size[31:16] <= io_din;                                            
+														 4:
+                                           begin
+                                              lz4_field       <= io_din[1:0]; 
+                                              cmd_blit_lz4    <= 1'b1;
+                                           end                                                                                                                  
+                                         endcase 						
                                                                         
                        endcase
                 end

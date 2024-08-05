@@ -69,11 +69,11 @@ MODULE_API_GMW char* gmw_get_pBufferBlit(void)
 	}
 }
 
-MODULE_API_GMW void gmw_blit(uint32_t frame, uint16_t vCountSync, uint32_t margin)
+MODULE_API_GMW void gmw_blit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin)
 {
 	if (gmw != NULL)
 	{
-		gmw->CmdBlit(frame, vCountSync, margin);
+		gmw->CmdBlit(frame, field, vCountSync, margin);
 	}
 	else
 	{
@@ -179,7 +179,7 @@ MODULE_API_GMW void gmw_bindInputs(const char* misterHost)
 	if (!gmw_inputsBinded)
 	{
 		gmw->BindInputs(misterHost, 32101);
-	}	
+	}
 	gmw_inputsBinded = 1;
 }
 
@@ -225,7 +225,7 @@ MODULE_API_GMW void gmw_getPS2Inputs(gmw_fpgaPS2Inputs* ps2Inputs)
 	{
 		ps2Inputs->ps2Frame  = gmw->ps2Inputs.ps2Frame;
 		ps2Inputs->ps2Order  = gmw->ps2Inputs.ps2Order;
-		memcpy(&ps2Inputs->ps2Keys, &gmw->ps2Inputs.ps2Keys, sizeof(ps2Inputs->ps2Keys));	   
+		memcpy(&ps2Inputs->ps2Keys, &gmw->ps2Inputs.ps2Keys, sizeof(ps2Inputs->ps2Keys));
 		ps2Inputs->ps2Mouse  = gmw->ps2Inputs.ps2Mouse;
 		ps2Inputs->ps2MouseX = gmw->ps2Inputs.ps2MouseX;
 		ps2Inputs->ps2MouseY = gmw->ps2Inputs.ps2MouseY;
@@ -235,7 +235,7 @@ MODULE_API_GMW void gmw_getPS2Inputs(gmw_fpgaPS2Inputs* ps2Inputs)
 	{
 		memset(&ps2Inputs, 0, sizeof(ps2Inputs));
 		printf("[MiSTer] gmw_getPS2Inputs failed\n");
-	}	
+	}
 }
 
 MODULE_API_GMW const char* gmw_get_version()

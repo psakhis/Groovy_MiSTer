@@ -22,7 +22,6 @@
 #include <xdp/xsk.h>
 #include <sys/resource.h> //rlimit
 #include <assert.h>
-#include <sched.h>
 #include <netinet/udp.h>
 #include <netinet/ip.h>
 #include <netinet/ether.h>
@@ -32,6 +31,7 @@
 #include "../../hardware.h"
 #include "../../shmem.h"
 #include "../../spi.h"
+#include "../../file_io.h"
 
 #include "logo.h"
 #include "pll.h"
@@ -46,6 +46,7 @@
 #define UIO_SET_GROOVY_LOGO       0xf5
 #define UIO_SET_GROOVY_AUDIO      0xf6
 #define UIO_SET_GROOVY_BLIT_LZ4   0xf7
+#define UIO_SET_GROOVY_BLIT_FIELD_LZ4 0xf8
 
 // FPGA DDR shared
 #define BASEADDR 0x1C000000
@@ -64,13 +65,14 @@
 // UDP server
 #define UDP_PORT 32100
 #define UDP_PORT_INPUTS 32101
+#define UDP_PORT_GMC 32105
 
 #ifdef _AF_XDP
 // XDP server
 #define XDP_BASEADDR 0x15000000
 #define XDP_NUM_FRAMES 65536 			     // pot 2 (min.4096)
 #define XDP_FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
-#define RX_BATCH_SIZE 64		     	     
+#define RX_BATCH_SIZE 1		     	     
 #define INVALID_UMEM_FRAME UINT64_MAX
 #endif
 
@@ -81,6 +83,7 @@
 #define CMD_AUDIO 4
 #define CMD_GET_STATUS 5
 #define CMD_BLIT_VSYNC 6
+#define CMD_BLIT_FIELD_VSYNC 7
 
 
 
@@ -246,11 +249,23 @@ static struct sockaddr_in servaddrInputs;
 static struct sockaddr_in clientaddrInputs;
 static char sendbufInputs[83] = { 0 };
 
+static int sockfdGMC;
+static struct sockaddr_in servaddrGMC;
+static struct sockaddr_in clientaddrGMC;
+static char sendbufGMC[65536] = { 0 };
+
+
 #ifdef _AF_XDP
 static uint32_t inputs_ip_check_9 = 0;
 static uint32_t inputs_ip_check_17 = 0;
 static uint32_t inputs_ip_check_37 = 0;
 static uint32_t inputs_ip_check_41 = 0;
+
+static uint32_t udp_check_13 = 0;
+static uint32_t inputs_udp_check_9 = 0;
+static uint32_t inputs_udp_check_17 = 0;
+static uint32_t inputs_udp_check_37 = 0;
+static uint32_t inputs_udp_check_41 = 0;
 #endif
 
 /* Logo */
@@ -279,10 +294,15 @@ static uint8_t doScreensaver = 0;
 static uint8_t doPs2Inputs = 0;
 static uint8_t doJoyInputs = 0;
 static uint8_t doJumboFrames = 0;
+#ifdef _AF_XDP
+static uint8_t doXDPServer = 1;
+#else        
 static uint8_t doXDPServer = 0;
+#endif
 static uint8_t doARMClock = 0;
 static uint8_t isConnected = 0;
 static uint8_t isConnectedInputs = 0;
+static uint8_t isConnectedGMC = 0;
 
 
 /* FPGA HPS EXT STATUS */
@@ -376,7 +396,7 @@ static void groovy_FPGA_hps()
 
     bits.byte = (uint8_t) ((hps & 0xFF00) >> 8);
     doJumboFrames = bits.u.bit0;
-    doXDPServer = bits.u.bit1;
+    //doXDPServer = bits.u.bit1;   
     doARMClock = (bits.u.bit2) ? 1 : (bits.u.bit3) ? 2 : 0;
 
     LOG(0, "[HPS][doVerbose=%d hpsBlit=%d doScreenSaver=%d doPs2Inputs=%d doJoyInputs=%d doJumboFrames=%d doXDPServer=%d doARMClock=%d]\n", doVerbose, hpsBlit, doScreensaver, doPs2Inputs, doJoyInputs, doJumboFrames, doXDPServer, doARMClock);
@@ -500,6 +520,22 @@ static void groovy_FPGA_blit_lz4(uint32_t compressed_bytes)
     spi_w(lz4_zone);
     spi_w((uint16_t) compressed_bytes);
     spi_w((uint16_t) (compressed_bytes >> 16));
+    DisableIO();
+}
+
+static void groovy_FPGA_blit_field_lz4(uint32_t compressed_bytes, uint16_t field)
+{
+    uint16_t req = 0;
+    EnableIO();
+    do
+    {
+ 	req = fpga_spi_fast(UIO_SET_GROOVY_BLIT_FIELD_LZ4);
+    } while (req == 0);
+    uint16_t lz4_zone = (poc->PoC_field_lz4) ? 0 : 1;
+    spi_w(lz4_zone);
+    spi_w((uint16_t) compressed_bytes);
+    spi_w((uint16_t) (compressed_bytes >> 16));
+    spi_w(field);
     DisableIO();
 }
 
@@ -657,7 +693,7 @@ static void groovy_FPGA_blit_lz4(uint32_t bytes, uint16_t numBlit)
     	buffer[33] = (poc->PoC_frame_ddr >> 8) & 0xff;
     	buffer[34] = (poc->PoC_frame_ddr >> 16) & 0xff;
 
-    	groovy_FPGA_blit_lz4(poc->PoC_bytes_lz4_len);
+    	groovy_FPGA_blit_field_lz4(poc->PoC_bytes_lz4_len, poc->PoC_field);
     }
 
 }
@@ -864,7 +900,16 @@ static void groovy_send_joysticks()
 			LOG(0, "[ACK_%s][Failed]\n", "STATUS");
 			return;
 		}
-		iph->check = (len == 9) ? inputs_ip_check_9 : inputs_ip_check_17;
+		if (len == 9)
+		{
+			iph->check = inputs_ip_check_9;
+			compute_udp_checksum((unsigned short *)udph, inputs_udp_check_9);	
+		}
+		else
+		{
+			iph->check = inputs_ip_check_17;
+			compute_udp_checksum((unsigned short *)udph, inputs_udp_check_17);
+		}		 		
 		udph->len = htons(len + sizeof(struct udphdr));
 		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + len);
 		addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
@@ -918,7 +963,16 @@ static void groovy_send_ps2()
 			LOG(0, "[ACK_%s][Failed]\n", "STATUS");
 			return;
 		}
-		iph->check = (len == 37) ? inputs_ip_check_37 : inputs_ip_check_41;
+		if (len == 37)
+		{
+			iph->check = inputs_ip_check_37;
+			compute_udp_checksum((unsigned short *)udph, inputs_udp_check_37);	
+		}
+		else
+		{
+			iph->check = inputs_ip_check_41;
+			compute_udp_checksum((unsigned short *)udph, inputs_udp_check_41);
+		}		
 		udph->len = htons(len + sizeof(struct udphdr));
 		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + len);
 		addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
@@ -976,8 +1030,8 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 	else
 	{
 		//struct ethhdr *eth = (struct ethhdr *)(sendbuf);
-		//struct iphdr *iph = (struct iphdr *)(sendbuf + sizeof(struct ethhdr));
-		//struct udphdr *udph = (struct udphdr *)(sendbuf + sizeof(struct ethhdr) + (iph->ihl * 4));
+		struct iphdr *iph = (struct iphdr *)(sendbuf + sizeof(struct ethhdr));
+		struct udphdr *udph = (struct udphdr *)(sendbuf + sizeof(struct ethhdr) + (iph->ihl * 4));
 		int ret = 0;
 		uint32_t tx_idx = 0;
 		uint64_t addr = 0;
@@ -987,6 +1041,7 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 			LOG(0, "[ACK_%s][Failed]\n", "STATUS");
 			return;
 		}
+		compute_udp_checksum((unsigned short *)udph, udp_check_13); 		
 		addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
 		memcpy(xsk_umem__get_data(xsk_socket->umem->buffer, addr), sendbuf, 55);
 		xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->addr = addr;
@@ -1013,6 +1068,7 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan, uint8_t rgb_mode)
 {
 	difMs = 0;
+	fpga_lz4_uncompressed = 0;
 	blitCompression = (compression <= 1) ? compression : 0;
 	audioRate = (audio_rate <= 3) ? audio_rate : 0;
 	audioChannels = (audio_chan <= 2) ? audio_chan : 0;
@@ -1064,14 +1120,22 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 	groovy_FPGA_init(1, audioRate, audioChannels, rgbMode);
 }
 
-static void setBlit(uint32_t udp_frame, uint32_t udp_lz4_size)
+static void setBlit(uint32_t udp_frame, uint8_t udp_field, uint32_t udp_lz4_size)
 {
 	poc->PoC_frame_recv = udp_frame;
 	poc->PoC_bytes_recv = 0;
 	poc->PoC_bytes_lz4_ddr = 0;
-	poc->PoC_bytes_lz4_len = (blitCompression) ? udp_lz4_size : 0;
-	poc->PoC_field = (!poc->PoC_FB_progressive) ? (poc->PoC_frame_recv + poc->PoC_field_frame) % 2 : 0;
-	poc->PoC_buffer_offset = (blitCompression) ? (poc->PoC_field_lz4) ? LZ4_OFFSET_B : LZ4_OFFSET_A : (!poc->PoC_FB_progressive && poc->PoC_field) ? FIELD_OFFSET : 0;
+	poc->PoC_bytes_lz4_len = (blitCompression) ? udp_lz4_size : 0;	
+	if (udp_field == 2)
+	{
+		poc->PoC_field = (!poc->PoC_FB_progressive) ? (poc->PoC_frame_recv + poc->PoC_field_frame) % 2 : 0;	
+	}
+	else
+	{
+		poc->PoC_field = (!udp_field && !poc->PoC_FB_progressive) ? 1 : 0;
+	}
+	//poc->PoC_field = (udp_field == 2) ? (poc->PoC_frame_recv + poc->PoC_field_frame) % 2 : udp_field;	
+	poc->PoC_buffer_offset = (blitCompression) ? (poc->PoC_field_lz4) ? LZ4_OFFSET_B : LZ4_OFFSET_A : (!poc->PoC_FB_progressive && poc->PoC_field) ? FIELD_OFFSET : 0;	
 	poc->PoC_field_lz4 = (blitCompression) ? !poc->PoC_field_lz4 : 0;
 	poc->PoC_joystick_order = 0;
 	poc->PoC_ps2_order = 0;
@@ -1239,14 +1303,14 @@ static struct xsk_umem_info *configure_xsk_umem(void *buffer, uint64_t size)
 	umem = (xsk_umem_info*) calloc(1, sizeof(*umem));
 	if (!umem)
 	{
-		LOG(0, "[XPD][configure_xsk_umem:calloc][%s]\n", "error");
+		LOG(0, "[XDP][configure_xsk_umem:calloc][%s]\n", "error");
 		return NULL;
 	}
 
 	ret = xsk_umem__create(&umem->umem, buffer, size, &umem->fq, &umem->cq, NULL);
 	if (ret)
 	{
-		LOG(0, "[XPD][configure_xsk_umem:xsk_umem__create][%s]\n", "error");
+		LOG(0, "[XDP][configure_xsk_umem:xsk_umem__create][%s]\n", "error");
 		return NULL;
 	}
 	umem->buffer = buffer;
@@ -1285,7 +1349,7 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem)
 	uint32_t idx;
 	int i;
 	int ret;
-	//int sock_opt;
+//	int sock_opt;
 
 	xsk_info = (xsk_socket_info*) calloc(1, sizeof(*xsk_info));
 	if (!xsk_info)
@@ -1294,12 +1358,14 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem)
 		goto xsk_socket_error;
 	}
 	xsk_info->umem = umem;
-	xsk_cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;	//best value
+	xsk_cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;	//best value				
 	xsk_cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;	//best value
-	xsk_cfg.xdp_flags = XDP_FLAGS_DRV_MODE;
-	//xsk_cfg.bind_flags = XDP_USE_NEED_WAKEUP | XDP_ZEROCOPY; ////zc + recvfrom/sendto to wakeup and avoid softirqs UNSTABLE		
-	xsk_cfg.bind_flags = XDP_COPY;
-
+	
+	xsk_cfg.xdp_flags = XDP_FLAGS_DRV_MODE;		
+	//xsk_cfg.bind_flags = XDP_USE_NEED_WAKEUP | XDP_ZEROCOPY; ////zc + recvfrom/sendto UNSTABLE			
+	//xsk_cfg.bind_flags &= ~XDP_USE_NEED_WAKEUP;		
+	xsk_cfg.bind_flags = XDP_COPY;     		
+	xsk_cfg.bind_flags |= XDP_USE_NEED_WAKEUP;
 	xsk_cfg.libbpf_flags = XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD;
 	ret = xsk_socket__create(&xsk_info->xsk, "eth0", 0, umem->umem, &xsk_info->rx, &xsk_info->tx, &xsk_cfg);
 	if (ret)
@@ -1340,7 +1406,7 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem)
 
 	// Set socket options (busy poll) Warning: fails sends with XDP_COPY?
 	sockfd = xsk_socket__fd(xsk_info->xsk);
-       /*
+/*       
 	sock_opt = 20;
         ret = setsockopt(sockfd, SOL_SOCKET, SO_BUSY_POLL, (void *)&sock_opt, sizeof(sock_opt));
         if (ret < 0)
@@ -1348,7 +1414,6 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem)
           	LOG(0,"[XDP][SO_BUSY_POLL][error %d]\n", ret);
           	goto xsk_socket_error;
         }
-
        	sock_opt = 1;
 	ret = setsockopt(sockfd, SOL_SOCKET, SO_PREFER_BUSY_POLL, (void *)&sock_opt, sizeof(sock_opt));
         if (ret < 0)
@@ -1357,14 +1422,14 @@ static struct xsk_socket_info *xsk_configure_socket(struct xsk_umem_info *umem)
 		goto xsk_socket_error;
         }
 
-        sock_opt = 64;
+        sock_opt = 256;
         ret = setsockopt(sockfd, SOL_SOCKET, SO_BUSY_POLL_BUDGET, (void *)&sock_opt, sizeof(sock_opt));
         if (ret < 0)
         {
           	LOG(0,"[XDP][SO_BUSY_POLL_BUDGET][error %d]\n", ret);
            	goto xsk_socket_error;
         }
-	*/		
+*/			
 	
 	return xsk_info;
 
@@ -1455,7 +1520,7 @@ static void groovy_xdp_server_init()
 	struct bpf_object *obj;
 	int prog_fd;
 	struct bpf_prog_load_attr prog_load_attr;
-//	struct xdp_multiprog *mp = NULL;	
+	//struct xdp_multiprog *mp = NULL;	
 
 	if (setMTU() < 0)
 	{
@@ -1478,6 +1543,8 @@ static void groovy_xdp_server_init()
 		goto init_error_xdp;
 	}
 	err = bpf_set_link_xdp_fd(if_nametoindex("eth0"), prog_fd, XDP_FLAGS_DRV_MODE);
+	//err = bpf_set_link_xdp_fd(if_nametoindex("eth0"), prog_fd, XDP_FLAGS_SKB_MODE);
+	
 	if (err < 0)
 	{
 		LOG(0, "[XDP][bpf_set_link_xdp_fd][error %d]\n", err);
@@ -1551,7 +1618,7 @@ static void groovy_xdp_server_init()
 		goto init_error_xdp;
 	}
 
-	LOG(0, "[XDP][STARTED][%s]\n", "0.4");
+	LOG(0, "[XDP][STARTED][%s]\n", "0.5");
 
 	groovyServer = 2;
 	return;
@@ -1644,7 +1711,7 @@ static void groovy_udp_server_init()
     		goto init_error_udp;
     	}
 
-	LOG(0, "[UDP][STARTED][%s]\n", "0.4");
+	LOG(0, "[UDP][STARTED][%s]\n", "0.5");
 	groovyServer = 2;
 	return;
 
@@ -1706,6 +1773,61 @@ static void groovy_udp_server_init_inputs()
 
 inputs_error:
     	isConnectedInputs = 0;
+}
+
+static void groovy_udp_server_init_gmc()
+{
+	int ret = 0;
+	int flags, beTrueAddr;
+	sockfdGMC = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    	if (sockfdGMC < 0)
+    	{
+    		LOG(0, "[UDP][socketGMC][error %d]\n", sockfdGMC);
+    		goto gmc_error;
+    	}
+
+    	memset(&servaddrGMC, 0, sizeof(servaddrGMC));
+    	servaddrGMC.sin_family = AF_INET;
+    	servaddrGMC.sin_addr.s_addr = htonl(INADDR_ANY);
+    	servaddrGMC.sin_port = htons(UDP_PORT_GMC);
+
+        // Non blocking socket
+    	flags = fcntl(sockfdGMC, F_GETFD, 0);
+    	if (flags < 0)
+    	{
+      		LOG(0, "[UDP][get falg GMC][error %d]\n", flags);
+      		goto gmc_error;
+    	}
+    	flags |= O_NONBLOCK;
+    	ret = fcntl(sockfdGMC, F_SETFL, flags);
+    	if (ret < 0)
+    	{
+       		LOG(0, "[UDP][set nonblock GMC fail][error %d]\n", ret);
+       		goto gmc_error;
+    	}
+
+	beTrueAddr = 1;
+	ret = setsockopt(sockfdGMC, SOL_SOCKET, SO_REUSEADDR, (void*)&beTrueAddr,sizeof(beTrueAddr));
+	if (ret < 0)
+	{
+        	LOG(0, "[UDP][SO_REUSEADDR GMC][error %d]\n", ret);
+        	goto gmc_error;
+        }
+        ret = setsockopt(sockfdGMC, IPPROTO_IP, IP_TOS, (char*)&beTrueAddr,sizeof(beTrueAddr));
+        if (ret < 0)
+	{
+        	LOG(0, "[UDP][IP_TOS GMC][error %d]\n", ret);
+        	goto gmc_error;
+        }
+        ret = bind(sockfdGMC, (struct sockaddr *)&servaddrGMC, sizeof(servaddrGMC));
+    	if (ret < 0)
+    	{
+    		LOG(0, "[UDP][bind GMC][error %d]\n", ret);
+    		goto gmc_error;
+    	}
+		
+gmc_error:
+    	isConnectedGMC = 0;
 }
 
 static inline void process_packet(char *recvbufPtr, int len)
@@ -1826,21 +1948,45 @@ static inline void process_packet(char *recvbufPtr, int len)
 
 				case CMD_BLIT_VSYNC:
 				{
-					if (len == 7 || len == 11 || len == 9)
+					if (len == 7 || len == 11)
 					{
-						uint32_t udp_lz4_size = 0;
-						uint32_t udp_frame = ((uint32_t) recvbufPtr[4]  << 24) | ((uint32_t)recvbufPtr[3]  << 16) | ((uint32_t)recvbufPtr[2]  << 8) | recvbufPtr[1];
-						uint16_t udp_vsync = ((uint16_t) recvbufPtr[6]  << 8) | recvbufPtr[5];
-						if (!blitCompression)
+						uint32_t udp_lz4_size = 0;																							
+						uint32_t udp_frame = ((uint32_t) recvbufPtr[4]  << 24) | ((uint32_t)recvbufPtr[3]  << 16) | ((uint32_t)recvbufPtr[2]  << 8) | recvbufPtr[1];								
+						uint8_t udp_field = (poc->PoC_FB_progressive) ? 0 : 2;	
+						uint16_t udp_vsync = ((uint16_t) recvbufPtr[6]  << 8) | recvbufPtr[5];						
+						if (len == 11 && blitCompression)
 						{
-							LOG(1, "[CMD_BLIT][%d][Frame=%d][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_vsync);
-						}
-				       		else if (len == 11 && blitCompression)
-						{
-							udp_lz4_size = ((uint32_t) recvbufPtr[10]  << 24) | ((uint32_t)recvbufPtr[9]  << 16) | ((uint32_t)recvbufPtr[8]  << 8) | recvbufPtr[7];
+							udp_lz4_size = ((uint32_t) recvbufPtr[10]  << 24) | ((uint32_t)recvbufPtr[9]  << 16) | ((uint32_t)recvbufPtr[8]  << 8) | recvbufPtr[7];								
 							LOG(1, "[CMD_BLIT][%d][Frame=%d][Vsync=%d][CSize=%d]\n", recvbufPtr[0], udp_frame, udp_vsync, udp_lz4_size);
 						}
-				       		setBlit(udp_frame, udp_lz4_size);
+						else
+						{
+							LOG(1, "[CMD_BLIT][%d][Frame=%d][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_vsync);
+						}																	
+				       		setBlit(udp_frame, udp_field, udp_lz4_size);
+				       		groovy_FPGA_status(1);
+				       		sendACK(udp_frame, udp_vsync);
+				       	}
+				}; break;
+				
+				case CMD_BLIT_FIELD_VSYNC:
+				{
+					if (len == 8 || len == 12)
+					{
+						uint32_t udp_lz4_size = 0;																	
+						uint32_t udp_frame = ((uint32_t) recvbufPtr[4]  << 24) | ((uint32_t)recvbufPtr[3]  << 16) | ((uint32_t)recvbufPtr[2]  << 8) | recvbufPtr[1];
+						uint8_t udp_field = (poc->PoC_FB_progressive) ? 0 : (uint8_t) recvbufPtr[5];
+						uint16_t udp_vsync = ((uint16_t) recvbufPtr[7]  << 8) | recvbufPtr[6];						
+						if (len == 12 && blitCompression)
+						{
+							udp_lz4_size = ((uint32_t) recvbufPtr[11]  << 24) | ((uint32_t)recvbufPtr[10]  << 16) | ((uint32_t)recvbufPtr[9]  << 8) | recvbufPtr[8];								
+							LOG(1, "[CMD_BLIT][%d][Frame=%d(%d)][Vsync=%d][CSize=%d]\n", recvbufPtr[0], udp_frame, udp_field, udp_vsync, udp_lz4_size);
+						}
+						else							
+						{
+							LOG(1, "[CMD_BLIT][%d][Frame=%d(%d)][Vsync=%d]\n", recvbufPtr[0], udp_frame, udp_field, udp_vsync);
+						}				       																
+				       		setBlit(udp_frame, udp_field, udp_lz4_size);
 				       		groovy_FPGA_status(1);
 				       		sendACK(udp_frame, udp_vsync);
 				       	}
@@ -1903,6 +2049,8 @@ static inline int process_packet_eth(struct xsk_socket_info *xsk, uint64_t addr,
 	//set headers preparing send acks
 	if (!isConnected && ntohs(udp->dest) == UDP_PORT)
 	{
+		ip->tos = 7 << 5; //max priority
+		
 		memset(&clientaddr, 0, sizeof (clientaddr));
  		clientaddr.sin_family = AF_INET;
 		clientaddr.sin_addr.s_addr = ip->saddr;
@@ -1922,15 +2070,18 @@ static inline int process_packet_eth(struct xsk_socket_info *xsk, uint64_t addr,
 		//precalculate ip checksum header
 		udp->check = 0;
 		udp->len = htons(13 + sizeof(struct udphdr));
+		udp_check_13 = sum_udp_checksum(ip, udp->len); 
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 13);
 		update_iph_checksum(ip);
-
+				
 		memcpy(&sendbuf[0], &data_pointer[0], 42);
 	}
 
 	//set headers preparing send inputs
-	if (!isConnectedInputs && ntohs(udp->dest) == UDP_PORT_INPUTS && (doPs2Inputs || doJoyInputs))
+	if (ntohs(udp->dest) == UDP_PORT_INPUTS && (doPs2Inputs || doJoyInputs))
 	{
+		ip->tos = 7 << 5; //max priority
+		
 		memset(&clientaddrInputs, 0, sizeof (clientaddrInputs));
  		clientaddrInputs.sin_family = AF_INET;
 		clientaddrInputs.sin_addr.s_addr = ip->saddr;
@@ -1954,24 +2105,58 @@ static inline int process_packet_eth(struct xsk_socket_info *xsk, uint64_t addr,
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 9);
 		update_iph_checksum(ip);
 		inputs_ip_check_9 = ip->check;
+		inputs_udp_check_9 = sum_udp_checksum(ip, udp->len); 
 
 		udp->len = htons(17 + sizeof(struct udphdr));
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 17);
 		update_iph_checksum(ip);
 		inputs_ip_check_17 = ip->check;
+		inputs_udp_check_17 = sum_udp_checksum(ip, udp->len); 
 
 		udp->len = htons(37 + sizeof(struct udphdr));
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 37);
 		update_iph_checksum(ip);
 		inputs_ip_check_37 = ip->check;
+		inputs_udp_check_37 = sum_udp_checksum(ip, udp->len); 
 
 		udp->len = htons(41 + sizeof(struct udphdr));
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 41);
 		update_iph_checksum(ip);
 		inputs_ip_check_41 = ip->check;
+		inputs_udp_check_41 = sum_udp_checksum(ip, udp->len); 
 
 		memcpy(&sendbufInputs[0], &data_pointer[0], 42);
 		isConnectedInputs = 1;
+		
+		return udp_len;
+	}
+	
+	//set headers preparing send gmc
+	if (ntohs(udp->dest) == UDP_PORT_GMC)
+	{
+		ip->tos = 7 << 5; //max priority
+		
+		memset(&clientaddrGMC, 0, sizeof (clientaddrGMC));
+ 		clientaddrGMC.sin_family = AF_INET;
+		clientaddrGMC.sin_addr.s_addr = ip->saddr;
+		clientaddrGMC.sin_port = udp->source;
+
+		memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
+		memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+		memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+
+		memcpy(&tmp_ip, &ip->saddr, sizeof(tmp_ip));
+		memcpy(&ip->saddr, &ip->daddr, sizeof(tmp_ip));
+		memcpy(&ip->daddr, &tmp_ip, sizeof(tmp_ip));
+
+		memcpy(&udp->dest,&udp->source, sizeof(udp->dest));
+		udp->source = htons(UDP_PORT_GMC);
+				
+		udp->check = 0;						
+		memcpy(&sendbufGMC[0], &data_pointer[0], 42);
+		isConnectedGMC = 1;							
+		
+		return udp_len;
 	}
 
 	if (isBlitting)
@@ -1991,30 +2176,37 @@ static inline void handle_receive_packets(struct xsk_socket_info *xsk)
 {
 	int rcvd, stock_frames, i;
 	uint32_t idx_rx = 0, idx_fq = 0;
-	int ret;		
-	
+	int ret = 0;	
+	 	
+	//recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
 	rcvd = xsk_ring_cons__peek(&xsk->rx, RX_BATCH_SIZE, &idx_rx);
-	if (!rcvd)
-	{	//kick softirqs away (need_wakeup)
-		//if (xsk_ring_prod__needs_wakeup(&xsk->umem->fq))
-		//{
-			//recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);			
-		//}
+	
+	if (!rcvd)	
+	{	
+		/*
+		if (xsk_ring_prod__needs_wakeup(&xsk->umem->fq))
+		{ 				 
+			recvfrom(sockfd, NULL, 0, MSG_DONTWAIT, NULL, NULL);			
+		}				
+		*/
 		return;
 	}
-	// Stuff the ring with as much frames as possible
-	stock_frames = xsk_prod_nb_free(&xsk->umem->fq, xsk_umem_free_frames(xsk));
+		
+	//Stuff the ring with as much frames as possible when not blitting
+	//stock_frames = xsk_prod_nb_free(&xsk->umem->fq, xsk_umem_free_frames(xsk));	
+	stock_frames = rcvd;		
 	if (stock_frames > 0)
-	{
-		ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames, &idx_fq);
-
+	{ 
+		ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames, &idx_fq);				
 		// This should not happen, but just in case
 		while (ret != stock_frames)
 		{
-			//if (xsk_ring_prod__needs_wakeup(&xsk->umem->fq))
-			//{
-				//recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
-			//}
+			/*
+			if (xsk_ring_prod__needs_wakeup(&xsk->umem->fq))
+			{
+				recvfrom(xsk_socket__fd(xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+			}
+			*/
 			ret = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
 		}
 		for (i = 0; i < stock_frames; i++)
@@ -2022,17 +2214,17 @@ static inline void handle_receive_packets(struct xsk_socket_info *xsk)
 			*xsk_ring_prod__fill_addr(&xsk->umem->fq, idx_fq++) = xsk_alloc_umem_frame(xsk);
 		}
 		xsk_ring_prod__submit(&xsk->umem->fq, stock_frames);
-	}
-
+	}	
+		
 	// Process received packets
 	for (i = 0; i < rcvd; i++)
-	{
+	{		
 		uint64_t addr = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->addr;
-		uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;
-		process_packet_eth(xsk, addr, len);
+		uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;	
+		process_packet_eth(xsk, addr, len);	
 		xsk_free_umem_frame(xsk, addr);
 	}
-
+			
 	xsk_ring_cons__release(&xsk->rx, rcvd);	
 }
 #endif
@@ -2041,7 +2233,7 @@ static void groovy_start()
 {
 	if (!groovyServer)
 	{
-		printf("Groovy-Server 0.4 starting\n");
+		printf("Groovy-Server 0.5 starting\n");
 
 		// get HPS Server Settings
 		groovy_FPGA_hps();
@@ -2061,19 +2253,17 @@ static void groovy_start()
 		groovyServer = 1;
 	}
 
-#ifdef _AF_XDP
+
     	// UDP Server
     	if (!doXDPServer)
     	{
 		groovy_udp_server_init();
 	}
+#ifdef _AF_XDP	
 	else
 	{
 		groovy_xdp_server_init();
 	}
-#else
-	doXDPServer = 0;
-	groovy_udp_server_init();	
 #endif
 	if (groovyServer != 2)
 	{
@@ -2083,8 +2273,13 @@ static void groovy_start()
 	if (!doXDPServer && (doPs2Inputs || doJoyInputs))
 	{
 		groovy_udp_server_init_inputs();
-	}
-
+	}		
+	
+	if (!doXDPServer)
+	{
+		groovy_udp_server_init_gmc();
+	}	
+	
 	// load LOGO
 	if (doScreensaver)
 	{
@@ -2095,7 +2290,7 @@ static void groovy_start()
 		groovyLogo = 1;
 	}
 
-    	printf("Groovy-Server 0.4 started\n");
+    	printf("Groovy-Server 0.5 started\n");
 
 start_error:
     	{}
@@ -2115,7 +2310,7 @@ void groovy_stop()
 			LOG(0, "[UDP][%s]\n", "Closing");
 			close(sockfd);
 		}
-#ifdef _AF_XDP	
+#ifdef _AF_XDP
 		else
 		{
 		
@@ -2129,6 +2324,8 @@ void groovy_stop()
 				xsk_umem__delete(umem->umem);
 			}
 			bpf_set_link_xdp_fd(if_nametoindex("eth0"), -1, XDP_FLAGS_DRV_MODE);
+			//bpf_set_link_xdp_fd(if_nametoindex("eth0"), -1, XDP_FLAGS_SKB_MODE);			
+			 
 		}
 #endif		
 		if (sockfdInputs)
@@ -2139,7 +2336,7 @@ void groovy_stop()
 		sockfd = 0;
 		sockfdInputs = 0;
 	}
-	printf("Groovy-Server 0.4 stopped\n");
+	printf("Groovy-Server 0.5 stopped\n");
 	groovyServer = 0;
 }
 
@@ -2166,7 +2363,7 @@ void groovy_poll()
 			int len = recvfrom(sockfd, recvbufPtr, 65536, 0, (struct sockaddr *)&clientaddr, &clilen);
 			process_packet(recvbufPtr, len);
 		}
-#ifdef _AF_XDP		
+#ifdef _AF_XDP
 		else
 		{						
 			handle_receive_packets(xsk_socket);			
@@ -2302,7 +2499,72 @@ void groovy_send_mouse(unsigned char ps2, unsigned char x, unsigned char y, unsi
 	}
 }
 
+void groovy_user_io_file_gmc(const char* name)
+{		
+#ifndef _AF_XDP		
+	if (!isConnectedGMC)
+	{					
+		int len = recvfrom(sockfdGMC, recvbuf, 1, 0, (struct sockaddr *)&clientaddrGMC, &clilen);
+		if (len > 0)
+		{
+			char hoststr[NI_MAXHOST];
+			char portstr[NI_MAXSERV];			
+			getnameinfo((struct sockaddr *)&clientaddrGMC, clilen, hoststr, sizeof(hoststr), portstr, sizeof(portstr), NI_NUMERICHOST | NI_NUMERICSERV);
+			LOG(1,"[GMC][%s:%s]\n", hoststr, portstr);  			
+			isConnectedGMC = 1;
+		}					
+	}
+#endif	
+	LOG(0,"[GMC][%s]\n", name); 
+	size_t fSize = 0;
+	char* sendbufPtr = (doXDPServer) ? (char*) &sendbufGMC[42] : (char*) &sendbufGMC[0];
+	fSize = FileLoad(name, sendbufPtr, 65536);	
 
+    	if (isConnectedGMC)
+    	{
+    		LOG(2, "[GMC][Send]%s\n", sendbufPtr);
+    		if (!doXDPServer)
+    		{
+    			sendto(sockfdGMC, sendbufPtr, fSize, 0, (struct sockaddr *)&clientaddrGMC, clilen);
+    		}	
+#ifdef _AF_XDP
+		else
+		{
+			//struct ethhdr *eth = (struct ethhdr *)(sendbufInputs);
+			struct iphdr *iph = (struct iphdr *)(sendbufGMC + sizeof(struct ethhdr));
+			struct udphdr *udph = (struct udphdr *)(sendbufGMC + sizeof(struct ethhdr) + (iph->ihl * 4));
+			int ret = 0;
+			uint32_t tx_idx = 0;
+			uint64_t addr = 0;
+			ret = xsk_ring_prod__reserve(&xsk_socket->tx, 1, &tx_idx);
+			if (ret != 1) {
+				// No more transmit slots, drop the packet
+				LOG(0, "[ACK_%s][Failed]\n", "STATUS");
+				return;
+			}	
+			iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + fSize);
+			update_iph_checksum(iph);
+			udph->check = 0;
+			udph->len = htons(fSize + sizeof(struct udphdr));
+			uint32_t udph_sum = sum_udp_checksum(iph, udph->len); 						
+			compute_udp_checksum((unsigned short *)udph, udph_sum);																				
+			addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
+			memcpy(xsk_umem__get_data(xsk_socket->umem->buffer, addr), sendbufGMC, 42 + fSize);
+			xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->addr = addr;
+			xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->len = 42 + fSize;
+			xsk_ring_prod__submit(&xsk_socket->tx, 1);
+			xsk_socket->outstanding_tx++;
+	
+			complete_tx(xsk_socket);			
+		}
+#endif    		
+    	}
+    	else
+    	{
+    		LOG(2, "[GMC][Read]%s\n", sendbufPtr);
+    	}
+    	
+}
 
 
 

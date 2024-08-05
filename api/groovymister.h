@@ -66,7 +66,7 @@ typedef struct fpgaJoyInputs{
 	char     joy2LXAnalog; 	//joystick 2 L-Analog X
 	char     joy2LYAnalog; 	//joystick 2 L-Analog Y
 	char     joy2RXAnalog; 	//joystick 2 R-Analog X
-	char     joy2RYAnalog; 	//joystick 2 R-Analog Y	
+	char     joy2RYAnalog; 	//joystick 2 R-Analog Y
 } fpgaJoyInputs;
 
 typedef struct fpgaPS2Inputs{
@@ -85,7 +85,7 @@ class GroovyMister
 {
  public:
 
-	char *pBufferBlit; 	 // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit	
+	char *pBufferBlit; 	 // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
 	char *pBufferAudio; 	 // This buffer are registered and aligned for sending audio. Populate it before CmdAudio
 	fpgaStatus fpga; 	 // Data with last received ACK
 	fpgaJoyInputs joyInputs; // Data with last joystick inputs received
@@ -100,8 +100,8 @@ class GroovyMister
 	uint8_t CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
 	// Change resolution (check https://github.com/antonioginer/switchres) with modeline
 	void CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
-	// Stream frame, vCountSync = 0 for auto frame delay or number of vertical line to sync with, margin with nanoseconds for auto frame delay)
-	void CmdBlit(uint32_t frame, uint16_t vCountSync, uint32_t margin);
+	// Stream frame, field = 0 for progressive, vCountSync = 0 for auto frame delay or number of vertical line to sync with, margin with nanoseconds for auto frame delay)
+	void CmdBlit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin);
 	// Stream audio
 	void CmdAudio(uint16_t soundSize);
 	// getACK is used internal on WaitSync, dwMilliseconds = 0 will time out immediately if no new data
@@ -143,6 +143,7 @@ class GroovyMister
 	LARGE_INTEGER m_tickStart;
 	LARGE_INTEGER m_tickEnd;
 	LARGE_INTEGER m_tickSync;
+	LARGE_INTEGER m_tickCongestion;
 #else
 	int m_sockFD;
 	int m_sockInputsFD;
@@ -150,7 +151,8 @@ class GroovyMister
 	struct timespec m_tickStart;
 	struct timespec m_tickEnd;
 	struct timespec m_tickSync;
-#endif       
+	struct timespec m_tickCongestion;
+#endif
 	struct sockaddr_in m_serverAddr;
 	struct sockaddr_in m_serverAddrInputs;
 	char m_bufferSend[26];
@@ -170,6 +172,7 @@ class GroovyMister
 	uint32_t m_streamTime;
 	uint32_t m_emulationTime;
 	uint16_t m_mtu;
+	uint8_t m_doCongestionControl;
 
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);
 	void Send(void *cmd, int cmdSize);
