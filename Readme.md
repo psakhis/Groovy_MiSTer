@@ -23,6 +23,12 @@ https://youtu.be/H0175WJFpUs
   [Groovy]<br />
   main=MiSTer_groovy<br />
   </sub>
+  
+  - Only for XDP high performance feature, some tweaks on Linux are needed. For UDP isn't needed.
+  1. Replace kernel: zImage_dtb file on /media/fat/linux (is same [kernel](MiSTer-devel/Linux-Kernel_MiSTer#55) with some patches for eth0 driver and builded with CONFIG_XDP_SOCKETS=Y)
+  2. Save groovy_xdp_kern.o to /usr/lib/arm-linux-gnueabihf/bpf (this program will be injected on eth while xdp is running)
+  3. Save libelf.so.1 on /usr/lib (library requiered)
+  4. On MiSTer.ini change binary from MiSTer_groovy to MiSTer_groovy_XDP 
 ## Emulators available
 ### [GroovyMAME](https://github.com/antonioginer/GroovyMAME/releases) <br />
   MAME fork by @Calamity, download mame_mister.ini and rename to mame.ini
@@ -52,10 +58,11 @@ https://youtu.be/H0175WJFpUs
 ### [emu4crt](https://github.com/psakhis/emu4crt/releases) 
   Mednafen fork, on mednafen.cfg set:
   
-    mister.host 192.x.x.x
-    mister.port 32100
-    mister.lz4 1 (0-raw, 1-lz4 or 2-lz4hc)
-    mister.vsync 0 (automatic frame delay)
+    mister.host 192.x.x.x  
+    mister.lz4 1 (0-raw, 1-lz4, 2-lz4hc, 3-lz4 adaptative)
+    mister.vsync 0 (0 for automatic frame delay or line do you want to sync)
+    mister.mtu 1500 (3800 for jumbo frames)
+    mister.interlaced_fb 1 (0 for force progressive framebuffer with interlaced modes)
     video.resolution_switch mister
   
 ### [Retroarch](https://github.com/antonioginer/RetroArch/tree/mister) 
