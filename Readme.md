@@ -87,8 +87,22 @@ https://youtu.be/H0175WJFpUs
 
     *Automatic frame delay for best results on latency options
     *For dosbox core, set 60fps on core options.
-    *Hardware cores only works with glcore/vulkan.
+    *Hardware cores only works with glcore/vulkan (framebuffer for flycast is recommended on core options) 
     *For run a core from command line -> retroach.exe -L cores/xxxx.dll file
+
+### [86box](https://github.com/psakhis/86Box/tree/mister) 
+  86box4crt fork, on 86box.cfg set:
+  
+    vid_mister = 1
+    vid_mister_ip = 192.x.x.x
+    joystick_0_nr = #number of joystick connected. MiSTer joysticks have numbers after PC ones.
+    vid_mister_lz4 = 1 (default)
+    vid_mister_interlaced_fb = 0 (default)
+    vid_mister_mtu = 0 (default, 1 for jumbo)
+    
+    *Tested with arcade_15 monitor on switchres.ini (use scandoubler for a 31khz monitor)
+    *Hacked mode 13h to get sync with 60hz instead of 70hz (no tearing)
+    *For see a log file, run with >log.txt
     
 ### [MiSTerCast](https://github.com/iequalshane/MiSTerCast) 
 Thanks to @Shane for this great windows utility to mirror desktop.
