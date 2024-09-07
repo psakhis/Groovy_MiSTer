@@ -1,10 +1,31 @@
+//
+// lz4.v
+// Copyright (c) 2024 Psakhis 
+//
+//
+// This source file is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version. 
+//
+// This source file is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of 
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License 
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+// ------------------------------------------
+//
+
 `timescale 1ns / 1ps
-module lz43 (
+module lz4 (
       input         lz4_clk,
       input         lz4_reset,
       input         lz4_mode_64,             // 64bits mode enable
       input         lz4_run,                 // continue flag  
-      input         lz4_stop,                // stop after long uncompressed_long valid
+      input         lz4_stop,                // stop after long uncompressed_long valid    
       input [31:0]  lz4_compressed_bytes,    // bytes of compressed blocks (end condition)  
       input [63:0]  lz4_compressed_long,     // compressed long
       input         lz4_write_long,          // write compressed long      
@@ -18,11 +39,10 @@ module lz43 (
       output        lz4_paused,              // needs more input compressed words
       output        lz4_done,                // last state
       output        lz4_error,               // last state error flag
-      output [3:0]  lz4_state
-/* DEBUG 
-      output [31:0] lz4_gravats,
-      output [31:0] lz4_llegits,
-      output        lz4_read_ready           */
+      output [3:0]  lz4_state,
+      output [31:0] lz4_writed_bytes,
+      output [31:0] lz4_readed_bytes,
+      output        lz4_read_ready          
 );
 
 parameter BLOCKS_SIZE = 16'd128;  //enough for max ddr_burst
@@ -73,12 +93,12 @@ reg [15:0] offset = 16'd0;         // Match Offset (little endian)
 reg [7:0] uncompressed_byte = 8'd0;
 reg [63:0] uncompressed_long = 64'd0;
 reg [31:0] uncompressed_bytes = 32'd0;
+
 reg byte_valid = 1'b0;
 reg long_valid = 1'b0;
 reg paused = 1'b0;
 reg done = 1'b0;
 reg error = 1'b0;
-
 
 
 //write new compressed bytes
@@ -145,7 +165,7 @@ always @(posedge lz4_clk) begin
          byte_valid         <= 1'b0; 
          long_valid         <= 1'b0;                  
          done               <= 1'b0;
-         error              <= 1'b0;
+         error              <= 1'b0;                                 
        end                                   
                        
        paused        <= 1'b0; 
@@ -153,7 +173,7 @@ always @(posedge lz4_clk) begin
        if (lz4_run && (!long_valid || !lz4_stop)) begin                    
                     
          byte_valid    <= 1'b0; 
-         long_valid    <= 1'b0;                      
+         long_valid    <= 1'b0;                                   
                                                                   
          case (state)
                  S_Idle: 
@@ -223,18 +243,22 @@ always @(posedge lz4_clk) begin
                            window_addr13                       <= window_addr13 + 1'b1;                                                                                                                                        
                          end  
                          //end write_word
-
+`ifdef MISTER_LZ4_DISABLE_64B    
+                         next_word();                                    
+`else 
                          if (lz4_mode_64 && read_ready_64 && LL > 8 && block_read_index == 0 && LL_W >= window_addr3) begin // 64bit mode
                            state <= S_Read_Literals_64;
                            next_long();
                          end else begin
                            next_word();
-                         end           
-                         //next_word();                                                                                                                           
-                       end                                                        
+                         end        
+`endif                            
+                       end
+             
                      end else paused <= 1'b1;                                  
                    end       
-              
+                   
+`ifndef MISTER_LZ4_DISABLE_64B
                  S_Read_Literals_64: 
                    begin   
                      if (read_ready || blocks_readed) begin                                                       
@@ -288,6 +312,7 @@ always @(posedge lz4_clk) begin
                        end      
                      end else paused <= 1'b1;
                    end
+`endif
 
                  S_Read_Offset: 
                    begin                   
@@ -381,14 +406,19 @@ always @(posedge lz4_clk) begin
                        {uncompressed_long, window[window_addr13]} <= {2{window_addr3 >= offset ? window_data[8*MP3 +: 8] : window[MP13][8*MP3 +: 8], window_data[00 +: 56]}};                                                                                                                                                                       
                        window_addr13                              <= window_addr13 + 1'b1;  
                      end
-                     //end write_word                                        
+                     //end write_word    
+`ifndef MISTER_LZ4_DISABLE_64B                     
                      if (lz4_mode_64 && ML > 8 && MP3 == 7 && window_addr13 > MP13 + 1) begin //64b mode using window buffer                      
                        state <= S_Copy_Matches_64;  
                      end else if (lz4_mode_64 && ML > 8 && window_addr3 == 7 && offset <= 8) begin //64b mode using last 8 bytes                      
                                 state <= S_Copy_Matches_64_8;  
-                              end else if (ML == 1) state <= S_Idle;                      
+                              end else if (ML == 1) state <= S_Idle;     
+`else
+                     if (ML == 1) state <= S_Idle;
+`endif                     
                    end       
 
+`ifndef MISTER_LZ4_DISABLE_64B
                  S_Copy_Matches_64:
                    begin          
                      ML                 <= ML - 32'd8;                                                             
@@ -495,12 +525,13 @@ always @(posedge lz4_clk) begin
                      if (ML == 8) state  <= S_Idle;
                       else if (ML < 16) state  <= S_Copy_Matches;
                    end  
-
+`endif
 
                  default:
                     state <= S_Idle;
                          
          endcase          
+     
        end          
 end
 
@@ -521,11 +552,9 @@ assign lz4_paused = paused;
 assign lz4_done = done;
 assign lz4_error = error;
 assign lz4_state = state;
+assign lz4_writed_bytes = block_write_total;
+assign lz4_readed_bytes = block_read_total;
+assign lz4_read_ready = read_ready; 
 
-/* DEBUG
-assign lz4_gravats = block_write_total;
-assign lz4_llegits = block_read_total;
-assign lz4_read_ready = read_ready;
-*/
 
 endmodule
