@@ -6,7 +6,7 @@
 module vga (
    
    input  clk_sys, 
-   input  ce_pix,
+   input  ce_pix, 
    
    input  vga_reset,
    input  vga_frame_reset, //reset vga_frame counter   
@@ -50,7 +50,11 @@ module vga (
    input [7:0] r_in,
    input [7:0] g_in,
    input [7:0] b_in,
-        
+      
+   input       cmd_blit_vsync,
+   input       vsync_skip,
+   input       vsync_overlay,
+   
    output        vram_ready,                    
    output [23:0] vram_pixels,              
    output [23:0] vram_queue,
@@ -104,9 +108,14 @@ assign V_total       = (interlaced && field) ? V+VBP+VFP+VS - 1'b1 : V+VBP+VFP+V
 assign V_pulse_start = (interlaced && field) ? V+VFP + 1'b1 : V+VFP;
 assign V_pulse_end   = (interlaced && field) ? V+VFP+VS + 1'b1 : V+VFP+VS;
 
-assign r = pixel[23:16];
-assign g = pixel[15:8];
-assign b = pixel[7:0];
+assign r = out_ena ? pixel_overlay[23:16] : out_ena_skip ? pixel_overlay_skip[23:16] : pixel[23:16];
+assign g = out_ena ? pixel_overlay[15:8]  : out_ena_skip ? pixel_overlay_skip[15:8]  : pixel[15:8];
+assign b = out_ena ? pixel_overlay[7:0]   : out_ena_skip ? pixel_overlay_skip[7:0]   : pixel[7:0];
+
+//assign r = pixel[23:16];
+//assign g = pixel[15:8];
+//assign b = pixel[7:0];
+
 
 assign vcount    = v_cnt;
 assign vga_frame = vga_vblanks;
@@ -491,7 +500,7 @@ always@(posedge clk_sys) begin
    end  
 
    //frambuffer progressive vs interlaced modeline
-   if (vga_reset || FB_prev_interlaced != interlaced || FB_V != V) begin
+   if (vga_reset || FB_prev_interlaced != interlaced || FB_V != V || vga_soft_reset) begin
      FB_prev_interlaced       <= interlaced; 
      FB_H                     <= H; 
      FB_V                     <= V;     
@@ -663,7 +672,7 @@ always@(posedge clk_sys) begin
    hb    <= 1'b1;
  end 
  
- if (!interlaced || vga_reset) field <= 1'b0;
+ if (!interlaced || vga_reset || vga_frame_reset || vga_soft_reset) field <= 1'b0;
  
  if (ce_pix && !vga_reset && !vga_soft_reset) begin                             
         
@@ -700,7 +709,8 @@ always@(posedge clk_sys) begin
  //if (!interlaced || vga_reset) field <= 1'b0;
  
  if (vga_soft_reset) begin  
-   v_cnt <= (interlaced && !field) ? V+10'd2 : V+10'd1;  
+ //  v_cnt <= (interlaced && !field) ? V+10'd2 : V+10'd1;  
+   v_cnt <= interlaced ? V+10'd2 : V+10'd1;  
    _vs   <= 1'b1;
    vb    <= 1'b1;       
  end 
@@ -809,8 +819,88 @@ always@(posedge clk_sys) begin
          
 end
 
+////////////////////////////////////////// OVERLAY VSYNC DISPLAY ////////////////////////////////////////////////
+
+reg       m_vsync_skip = 1'b0;
+reg       m_vsync_skip_show = 1'b0;
+reg[31:0] m_vga_vblanks = 32'd0;
+reg m_bcd_reset = 1'b0;
+reg[15:0] m_vcnt = 16'd0;
+reg[15:0] m_vcnt_show = 16'd255;
+
+// overlay vsync
+always@(posedge clk_sys) begin  
+ 
+   if (vga_reset) begin    
+     m_vsync_skip      <= 1'b0;
+     m_vga_vblanks     <= 32'd0;   
+     m_vcnt            <= 16'd0;
+     m_vcnt_show       <= 16'd255;
+     m_vsync_skip_show <= 1'b0;
+   end 
+   
+   m_bcd_reset         <= 1'b0;
+   m_vsync_skip        <= m_vsync_skip ? 1'b1 : vsync_skip; 
+      
+   if (m_vga_vblanks + 50 < vga_vblanks) begin 
+     m_vga_vblanks     <= vga_vblanks;
+     m_vcnt            <= 16'd0;
+     m_vcnt_show       <= m_vcnt;    
+     m_vsync_skip      <= 1'b0;
+     m_vsync_skip_show <= m_vsync_skip;
+     m_bcd_reset       <= 1'b1;     
+   end   
+   
+   if (cmd_blit_vsync) begin
+     m_vcnt            <= (v_cnt + m_vcnt) >> 1;   
+   end   
+
+end
+
+wire out_ena, out_ena_skip; 
+wire [23:0] pixel_overlay, pixel_overlay_skip;
+wire [15:0] o_BCD;
+
+binary_to_bcd binary_to_bcd
+(
+   .CLK     (clk_sys),
+   .RST     (m_bcd_reset),
+   .START   (1'b1),  
+   .BIN     (m_vcnt_show), 
+   .BCDOUT  (o_BCD)  
+);
+
+wire [7:0] ascii_3 = {4'b0, o_BCD[3:0]}  + 8'h30;
+wire [7:0] ascii_2 = {4'b0, o_BCD[7:4]}  + 8'h30;
+wire [7:0] ascii_1 = {4'b0, o_BCD[11:8]} + 8'h30;
+
+vga_overlay #(.COLS(3), .OFFSETX(16), .OFFSETY(16), .RGB_FRONT(24'h0000FF)) vga_overlay
+(   
+   .clk                  (clk_sys),
+   .ce                   (ce_pix),
+   .ena                  (vsync_overlay && !m_vsync_skip_show),
+   .i_pixel_out_x        (h_cnt),
+   .i_pixel_out_y        (interlaced ? v_cnt >> 1 : v_cnt),
+   .o_pixel_out_data     (pixel_overlay),
+   .o_pixel_out_ena      (out_ena),
+   .textstring           ({ascii_1, ascii_2, ascii_3})  
+);
+
+vga_overlay #(.COLS(3), .OFFSETX(16), .OFFSETY(16), .RGB_FRONT(24'hFF0000)) vga_overlay_skip
+(   
+   .clk                  (clk_sys),
+   .ce                   (ce_pix),
+   .ena                  (vsync_overlay && m_vsync_skip_show),
+   .i_pixel_out_x        (h_cnt),
+   .i_pixel_out_y        (interlaced ? v_cnt >> 1 : v_cnt),
+   .o_pixel_out_data     (pixel_overlay_skip),
+   .o_pixel_out_ena      (out_ena_skip),
+   .textstring           ({ascii_1, ascii_2, ascii_3})  
+);
+
 
 endmodule
+
 
 
 

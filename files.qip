@@ -1,5 +1,7 @@
 set_global_assignment -name VERILOG_FILE sys/vga_pwm.v
 set_global_assignment -name SDC_FILE Groovy.sdc
+set_global_assignment -name VERILOG_FILE rtl/binary_to_bcd.v
+set_global_assignment -name VHDL_FILE rtl/vga_overlay.vhd
 set_global_assignment -name QIP_FILE rtl/fifo_vga.qip
 set_global_assignment -name QIP_FILE rtl/fifo_sound.qip
 set_global_assignment -name VERILOG_FILE rtl/lz4.v

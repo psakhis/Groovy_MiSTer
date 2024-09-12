@@ -231,6 +231,7 @@ localparam CONF_STR = {
    "P1-;",
    "P1O[32],Volatile framebuffer,Off,On;", 
    "P1O[37],PWM,Off,On;",
+   "P1O[46],Vsync overlay,Off,On;",
    "P2,Audio Settings;",
    "P2O[34],Audio,Off,On;",
    "P2O[36:35],Desired buffer (ms),0,16,32,64;",   
@@ -287,8 +288,9 @@ wire        hps_jumbo_frames = status[42];
 //wire        hps_server_type = status[43];
 reg         hps_server_type = 1'b0;
 wire [1:0]  hps_arm_clock = status[45:44];
+wire        hps_vsync_overlay = status[46];
 
-wire [46:0] status;
+wire [47:0] status;
 wire [31:0] joy0;
 wire [31:0] joy1;
 
@@ -317,7 +319,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 wire [35:0] EXT_BUS;
 reg  reset_switchres = 0, vga_frameskip = 0, vga_frameskip_prev = 0, reset_blit = 0, auto_blit = 0, reset_audio = 0, cmd_fskip = 0, reset_blit_lz4 = 0, auto_blit_lz4 = 0; 
-wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio, cmd_blit_lz4; 
+wire cmd_init, cmd_switchres, cmd_blit, cmd_logo, cmd_audio, cmd_blit_lz4, cmd_blit_vsync; 
 wire [15:0] audio_samples;
 wire [1:0] sound_rate, sound_chan, rgb_mode, lz4_field, lz4_ABCD;
 wire [31:0] lz4_size, switchres_frame;
@@ -371,7 +373,8 @@ hps_ext hps_ext
         .lz4_size(lz4_size),
         .lz4_ABCD(lz4_ABCD),
         .lz4_field(lz4_field),
-        .lz4_uncompressed_bytes(lz4_uncompressed_bytes)
+        .lz4_uncompressed_bytes(lz4_uncompressed_bytes),     
+        .cmd_blit_vsync (cmd_blit_vsync)
 /* debug 
          .blit_frame(blit_frame),
         .blit_pixels(blit_pixels),
@@ -907,7 +910,8 @@ always @(posedge clk_sys) begin
              if (cmd_scandoubler != PoC_pll_S && (vblank_core || PoC_subframe_px_vram == 0)) begin // scandoubler request for 480i              
                state                 <= S_Switchres_Scandoubler;
              end else            
-             if (cmd_switchres && switchres_frame <= vga_frame && (vblank_core || PoC_subframe_px_vram == 0)) begin  // request modeline (apply after blit)  
+            // if (cmd_switchres && switchres_frame <= vga_frame && (vblank_core || PoC_subframe_px_vram == 0)) begin  // request modeline (apply after blit)  
+             if (cmd_switchres && switchres_frame <= vga_frame && vga_vcount > PoC_V) begin  // request modeline (apply after blit)  
                reset_switchres       <= 1'b1;                               
                ddr_data_req          <= 1'b1;
                ddr_addr              <= DDR_SW_HEADER; 
@@ -980,9 +984,10 @@ always @(posedge clk_sys) begin
            vram_reset <= !vram_synced;          
            if (ddr_data_ready) begin    
              ddr_data_req <= 1'b0;      
-             auto_blit    <= PoC_frame_vram >= ddr_data[23:0] ? 1'b0 : 1'b1;                           
-             state        <= S_Blit_Raw; 
-             if (ddr_data[23:0] < vga_frame || ddr_data[23:0] < PoC_frame_ddr || ddr_data[23:0] < PoC_frame_vram || ((vblank_core || !vram_pixels || !vram_synced) && ddr_data[23:0] <= vga_frame)) begin //frame arrives later (discard contaminate vram -> latency)
+             auto_blit    <= PoC_frame_vram >= ddr_data[23:0] || (!cmd_switchres && ddr_data[23:0] <= switchres_frame) ? 1'b0 : 1'b1;                           
+             state        <= cmd_switchres && ddr_data[23:0] > switchres_frame && PoC_subframe_px_vram == 0 ? S_Dispatcher : S_Blit_Raw; 
+             if ((!cmd_switchres && ddr_data[23:0] <= switchres_frame) || ddr_data[23:0] < vga_frame || ddr_data[23:0] < PoC_frame_ddr || ddr_data[23:0] < PoC_frame_vram || ((vblank_core || !vram_pixels || !vram_synced) && ddr_data[23:0] <= vga_frame)) begin //frame arrives later (discard contaminate vram -> latency)
+               state                   <= S_Dispatcher;
                PoC_subframe_px_vram    <= 24'd0;                                                                      
                PoC_subframe_bl_vram    <= 16'd0;
                PoC_subframe_px_ddr     <= 24'd0;
@@ -1173,7 +1178,7 @@ always @(posedge clk_sys) begin
           
              PoC_interlaced      <= ddr_data_tmp[152 +:08] >= 1 ? 1'b1 : 1'b0;                                               
              PoC_FB_interlaced   <= ddr_data_tmp[152 +:08] == 1 ? 1'b1 : 1'b0;                        
-             PoC_frame_switchres <= switchres_frame + 1'b1;           
+             PoC_frame_switchres <= vga_frame + 1'b1;           
              PoC_pll_S           <= (forced_scandoubler || scandoubler_fx != 2'b00) && ddr_data_tmp[152 +:08] == 2 ? 1'b1 : 1'b0;                              
                                                                                                  
              req_modeline    <= ~new_modeline; // update pll                         
@@ -1184,10 +1189,13 @@ always @(posedge clk_sys) begin
          
          S_Switchres_Mode: // apply change clk
          begin              
-           vga_soft_reset             <= 1'b1; // raster to V + 1  
+           vga_soft_reset             <= 1'b1; // raster to V + 1 and wait blit
            vram_reset                 <= 1'b1;             
            vga_frameskip              <= 1'b0;                  
            lz4_reset                  <= 1'b1;
+           PoC_frame_ddr              <= vga_frame;
+           PoC_frame_lz4_ddr          <= vga_frame;
+           PoC_frame_lz4              <= vga_frame;
            PoC_frame_vram             <= 24'd0;   
            PoC_subframe_px_vram       <= 24'd0;   
            PoC_subframe_bl_vram       <= 16'd0;  
@@ -1200,7 +1208,9 @@ always @(posedge clk_sys) begin
            PoC_lz4_resume_audio       <= 1'b0;   
            vram_drive_lz4             <= 1'b0;             
            vram_drive_raw             <= 1'b0;             
-           lz4_compressed_bytes       <= 32'd0;                  
+           lz4_compressed_bytes       <= 32'd0;  
+           auto_blit                  <= 1'b0;
+           auto_blit_lz4              <= 1'b0;             
            req_modeline               <= ~new_modeline;                                 
            new_vmode                  <= ~new_vmode;                                                                       
            state                      <= S_Dispatcher;                                                                       
@@ -1321,7 +1331,7 @@ always @(posedge clk_sys) begin
                    PoC_frame_lz4_FB <= 1'b1;                
                  end else begin
                    PoC_frame_lz4_FB <= 1'b0;                
-                   state <= (!vram_synced || vram_drive_raw || cmd_fskip || vga_frameskip) ? S_Dispatcher : S_Blit_Lz4; // if vram is controlled by fskip and this is a future frame, wait vblank
+                   state <= (!vram_synced || vram_drive_raw || cmd_fskip || vga_frameskip || (cmd_switchres && ddr_data[23:0] > switchres_frame) || (!cmd_switchres && ddr_data[23:0] <= switchres_frame)) ? S_Dispatcher : S_Blit_Lz4; // if vram is controlled by fskip and this is a future frame, wait vblank
                  end                       
                  PoC_frame_lz4_ddr          <= ddr_data[23:0];
                  PoC_subframe_lz4_ddr_bytes <= ddr_data[47:24]; 
@@ -1400,7 +1410,7 @@ always @(posedge clk_sys) begin
            vram_wren4      <= 1'b0;
            if (vram_queue > 0) vga_wait_vblank <= 1'b0;             
            ddr_data_write  <= ddr_data_write && ddr_busy ? 1'b1 : 1'b0;   // last uncompressed isnt writed yet                         
-           vga_soft_reset  <= 1'b0;                                        
+           if (!PoC_frame_lz4_FB) vga_soft_reset <= 1'b0;                                        
            lz4_run         <= lz4_done || cmd_fskip || cmd_audio || !cmd_init || (!vram_req_ready && !PoC_frame_lz4_FB) || !vram_synced ? 1'b0 : 1'b1;
            state           <= !(ddr_data_write && ddr_busy) && (lz4_paused || lz4_done || cmd_fskip || cmd_audio || !cmd_init || !vram_synced) ? S_Blit_End_Lz4 : S_Blit_Inflate_Lz4;                                                                                                                                                   
            if (lz4_long_valid && lz4_uncompressed_bytes > PoC_subframe_wr_bytes && !(ddr_data_write && ddr_busy) && PoC_subframe_px_lz4 < vga_pixels) begin                                                            
@@ -1540,6 +1550,8 @@ reg[7:0] r_vram_in1 = 8'h00, r_vram_in2 = 8'h00, r_vram_in3 = 8'h00, r_vram_in4 
 reg[7:0] g_vram_in1 = 8'h00, g_vram_in2 = 8'h00, g_vram_in3 = 8'h00, g_vram_in4 = 8'h00;
 reg[7:0] b_vram_in1 = 8'h00, b_vram_in2 = 8'h00, b_vram_in3 = 8'h00, b_vram_in4 = 8'h00;
 
+wire reset_blit_vsync;
+
 vga vga 
 (           
  .clk_sys        (clk_sys),      
@@ -1582,7 +1594,10 @@ vga vga
  .b_vram_in4     (b_vram_in4),        // active vram b in
  .r_in           (r_in),              // non active vram r in (used for testing)
  .g_in           (g_in),              // non active vram g in (used for testing)
- .b_in           (b_in),              // non active vram b in (used for testing)  
+ .b_in           (b_in),              // non active vram b in (used for testing)   
+ .cmd_blit_vsync (cmd_blit_vsync),    // blit command to know vga_vcount
+ .vsync_skip     (vga_frameskip || !vram_synced),
+ .vsync_overlay  (hps_vsync_overlay), // vsync overlay
  .vram_ready     (vram_req_ready),    // vram it's ready to write a new pixel    
  .vram_end_frame (vram_end_frame),    // in vram there ara all pixels of current frame      
  .vram_synced    (vram_synced),       // vram it's synced on frame
@@ -1747,6 +1762,8 @@ lz4 lz4
  .lz4_readed_bytes       (lz4_readed_bytes),
  .lz4_read_ready         (lz4_read_ready)                     
 );   
+
+
 
        
 endmodule

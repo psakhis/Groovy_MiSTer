@@ -83,6 +83,8 @@
 #define INVALID_UMEM_FRAME UINT64_MAX
 #endif
 
+#define GROOVY_VERSION 1
+
 // GroovyMiSTer protocol
 #define CMD_CLOSE 1
 #define CMD_INIT 2
@@ -91,8 +93,7 @@
 #define CMD_GET_STATUS 5
 #define CMD_BLIT_VSYNC 6
 #define CMD_BLIT_FIELD_VSYNC 7
-
-
+#define CMD_GET_VERSION 8
 
 //https://stackoverflow.com/questions/64318331/how-to-print-logs-on-both-console-and-file-in-c-language
 #define LOG_TIMER 25
@@ -265,11 +266,14 @@ static char sendbufGMC[65536] = { 0 };
 
 
 #ifdef _AF_XDP
+static uint32_t ip_check_1 = 0;
+static uint32_t ip_check_13 = 0;
 static uint32_t inputs_ip_check_9 = 0;
 static uint32_t inputs_ip_check_17 = 0;
 static uint32_t inputs_ip_check_37 = 0;
 static uint32_t inputs_ip_check_41 = 0;
 
+static uint32_t udp_check_1 = 0;
 static uint32_t udp_check_13 = 0;
 static uint32_t inputs_udp_check_9 = 0;
 static uint32_t inputs_udp_check_17 = 0;
@@ -296,6 +300,7 @@ static uint8_t rgbMode = 0;
 
 static int isBlitting = 0;
 static int isCorePriority = 0;
+static int usingOldBlit = 0;
 
 static uint8_t hpsBlit = 0;
 static uint16_t numBlit = 0;
@@ -829,8 +834,17 @@ static void setSwitchres(char *recvbuf)
     poc->PoC_ce_pix = (udp_pclock * 16 < 90) ? 16 : (udp_pclock * 12 < 90) ? 12 : (udp_pclock * 8 < 100) ? 8 : (udp_pclock * 6 < 100) ? 6 : 4; // we want at least 40Mhz clksys for vga scaler         
     poc->PoC_interlaced = (udp_interlace >= 1) ? 1 : 0;
     poc->PoC_FB_progressive = (udp_interlace == 0 || udp_interlace == 2) ? 1 : 0;
-
-    poc->PoC_field_frame = poc->PoC_frame_ddr + 1;
+    
+    if (usingOldBlit && !poc->PoC_FB_progressive) //old blit depends match field if fskip is activated
+    {
+    	groovy_FPGA_status(1);
+    	poc->PoC_field_frame = poc->PoC_frame_ddr >= fpga_vga_frame ? poc->PoC_frame_ddr + 1 : fpga_vga_frame + 1;
+    }
+    else
+    {
+    	poc->PoC_field_frame = poc->PoC_frame_ddr + 1;
+    }
+    
     poc->PoC_field = 0;
 
     int M=0;
@@ -896,6 +910,7 @@ static void setClose()
 {
 	groovy_FPGA_init(0, 0, 0, 0);
 	isBlitting = 0;
+	usingOldBlit = 0;
 	numBlit = 0;
 	blitCompression = 0;
 	free(poc);
@@ -985,6 +1000,8 @@ static void groovy_send_joysticks()
 			LOG(0, "[ACK_%s][Failed]\n", "STATUS");
 			return;
 		}
+		udph->len = htons(len + sizeof(struct udphdr));
+		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + len);
 		if (len == 9)
 		{
 			iph->check = inputs_ip_check_9;
@@ -994,9 +1011,7 @@ static void groovy_send_joysticks()
 		{
 			iph->check = inputs_ip_check_17;
 			compute_udp_checksum((unsigned short *)udph, inputs_udp_check_17);
-		}		 		
-		udph->len = htons(len + sizeof(struct udphdr));
-		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + len);
+		}		 				
 		addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
 		memcpy(xsk_umem__get_data(xsk_socket->umem->buffer, addr), sendbufInputs, len + 42);
 		xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->addr = addr;
@@ -1048,6 +1063,8 @@ static void groovy_send_ps2()
 			LOG(0, "[ACK_%s][Failed]\n", "STATUS");
 			return;
 		}
+		udph->len = htons(len + sizeof(struct udphdr));
+		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + len);
 		if (len == 37)
 		{
 			iph->check = inputs_ip_check_37;
@@ -1057,13 +1074,53 @@ static void groovy_send_ps2()
 		{
 			iph->check = inputs_ip_check_41;
 			compute_udp_checksum((unsigned short *)udph, inputs_udp_check_41);
-		}		
-		udph->len = htons(len + sizeof(struct udphdr));
-		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + len);
+		}				
 		addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
 		memcpy(xsk_umem__get_data(xsk_socket->umem->buffer, addr), sendbufInputs, len + 42);
 		xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->addr = addr;
 		xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->len = len + 42;
+		xsk_ring_prod__submit(&xsk_socket->tx, 1);
+		xsk_socket->outstanding_tx++;
+
+		complete_tx(xsk_socket);
+	}
+#endif
+}
+
+static void sendVersion()
+{	
+	char* sendbufPtr = (doXDPServer) ? (char*) &sendbuf[42] : (char*) &sendbuf[0];
+	int flags = 0;
+	flags |= MSG_CONFIRM;	
+	sendbufPtr[0] = (uint8_t) GROOVY_VERSION;				
+		
+	if (!doXDPServer)
+	{
+		sendto(sockfd, sendbufPtr, 1, flags, (struct sockaddr *)&clientaddr, clilen);
+	}
+#ifdef _AF_XDP
+	else
+	{			 								
+		//struct ethhdr *eth = (struct ethhdr *)(sendbuf);
+		struct iphdr *iph = (struct iphdr *)(sendbuf + sizeof(struct ethhdr));
+		struct udphdr *udph = (struct udphdr *)(sendbuf + sizeof(struct ethhdr) + (iph->ihl * 4));
+		int ret = 0;
+		uint32_t tx_idx = 0;
+		uint64_t addr = 0;
+		ret = xsk_ring_prod__reserve(&xsk_socket->tx, 1, &tx_idx);
+		if (ret != 1) {
+			// No more transmit slots, drop the packet
+			LOG(0, "[VERSION_%s][Failed]\n", "STATUS");
+			return;
+		}
+		iph->check = ip_check_1;
+		udph->len = htons(1 + sizeof(struct udphdr));
+		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 1);
+		compute_udp_checksum((unsigned short *)udph, udp_check_1); 		
+		addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
+		memcpy(xsk_umem__get_data(xsk_socket->umem->buffer, addr), sendbuf, 43);
+		xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->addr = addr;
+		xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->len = 43;
 		xsk_ring_prod__submit(&xsk_socket->tx, 1);
 		xsk_socket->outstanding_tx++;
 
@@ -1125,8 +1182,11 @@ static void sendACK(uint32_t udp_frame, uint16_t udp_vsync)
 			// No more transmit slots, drop the packet
 			LOG(0, "[ACK_%s][Failed]\n", "STATUS");
 			return;
-		}
-		compute_udp_checksum((unsigned short *)udph, udp_check_13); 		
+		}		
+		iph->check = ip_check_13;
+		udph->len = htons(13 + sizeof(struct udphdr));
+		iph->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 13);		
+		compute_udp_checksum((unsigned short *)udph, udp_check_13); 						
 		addr = xsk_socket->umem_frame_addr[xsk_socket->outstanding_tx];
 		memcpy(xsk_umem__get_data(xsk_socket->umem->buffer, addr), sendbuf, 55);
 		xsk_ring_prod__tx_desc(&xsk_socket->tx, tx_idx)->addr = addr;
@@ -1161,6 +1221,7 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 	poc = (PoC_type *) calloc(1, sizeof(PoC_type));
 	initDDR();
 	isBlitting = 0;
+	usingOldBlit = 0;
 	numBlit = 0;
 
 
@@ -1716,7 +1777,7 @@ static void groovy_xdp_server_init()
 		goto init_error_xdp;
 	}
 
-	LOG(0, "[XDP][STARTED][%s]\n", "0.5");
+	LOG(0, "[XDP][STARTED][%d]\n", GROOVY_VERSION);
 
 	groovyServer = 2;
 	return;
@@ -1809,7 +1870,7 @@ static void groovy_udp_server_init()
     		goto init_error_udp;
     	}
 
-	LOG(0, "[UDP][STARTED][%s]\n", "0.5");
+	LOG(0, "[UDP][STARTED][%d]\n", GROOVY_VERSION);
 	groovyServer = 2;
 	return;
 
@@ -1931,7 +1992,7 @@ gmc_error:
 static inline void process_packet(char *recvbufPtr, int len)
 {
 	if (len > 0)
-	{
+	{		
 		if (isBlitting)
 		{
 			//udp error lost detection (jumbo to do)
@@ -1987,6 +2048,15 @@ static inline void process_packet(char *recvbufPtr, int len)
 		{
     			switch (recvbufPtr[0])
     			{
+    				case CMD_GET_VERSION:
+				{
+					if (len == 1)
+					{						
+						LOG(1, "[CMD_GET_VERSION][%d][ver=%d]\n", recvbufPtr[0], GROOVY_VERSION);
+						sendVersion();
+					}
+				}; break;
+				
 	    			case CMD_CLOSE:
 				{
 					if (len == 1)
@@ -2008,7 +2078,7 @@ static inline void process_packet(char *recvbufPtr, int len)
 						uint8_t audio_rate = recvbufPtr[2];
 						uint8_t audio_channels = recvbufPtr[3];
 						uint8_t rgb_mode = (len == 5) ? recvbufPtr[4] : 0;
-						LOG(1, "[CMD_INIT][%d][LZ4=%d][Audio rate=%d chan=%d][%s]\n", recvbufPtr[0], compression, audio_rate, audio_channels, (rgb_mode == 1) ? "RGBA888" : (rgb_mode == 2) ? "RGB565" : "RGB888");
+						LOG(1, "[CMD_INIT][%d][LZ4=%d][Audio rate=%d chan=%d][%s][ver=%d]\n", recvbufPtr[0], compression, audio_rate, audio_channels, (rgb_mode == 1) ? "RGBA888" : (rgb_mode == 2) ? "RGB565" : "RGB888", GROOVY_VERSION);
 						setInit(compression, audio_rate, audio_channels, rgb_mode);
 						sendACK(0, 0);						
 					}
@@ -2064,7 +2134,8 @@ static inline void process_packet(char *recvbufPtr, int len)
 				       		setBlit(udp_frame, udp_field, udp_lz4_size);
 				       		groovy_FPGA_status(1);
 				       		//LOG(1, "[GET_STATUS][DDR fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d][LZ4 state_1=%d inf=%d wr=%d, run=%d resume=%d t1=%d t2=%d cmd_fskip=%d stop=%d AB=%d com=%d grav=%d lleg=%d, sub=%d blit=%d]\n", poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame, fpga_lz4_state, fpga_lz4_uncompressed, fpga_lz4_writed, fpga_lz4_run, fpga_lz4_resume, fpga_lz4_test1, fpga_lz4_test2, fpga_lz4_cmd_fskip, fpga_lz4_stop, fpga_lz4_ABCD, fpga_lz4_compressed, fpga_lz4_gravats, fpga_lz4_llegits, fpga_lz4_subframe_bytes, fpga_lz4_subframe_blit);
-				       		sendACK(udp_frame, udp_vsync);
+				       		sendACK(udp_frame, udp_vsync);	
+				       		usingOldBlit = 1;			       		
 				       	}
 				}; break;
 				
@@ -2088,7 +2159,7 @@ static inline void process_packet(char *recvbufPtr, int len)
 				       		setBlit(udp_frame, udp_field, udp_lz4_size);
 				       		groovy_FPGA_status(1);
 				       		//LOG(1, "[GET_STATUS][DDR fr=%d bl=%d][GPU vc=%d fr=%d fskip=%d vb=%d fd=%d][VRAM px=%d queue=%d sync=%d free=%d eof=%d][LZ4 state_1=%d inf=%d wr=%d, run=%d resume=%d t1=%d t2=%d cmd_fskip=%d stop=%d AB=%d com=%d grav=%d lleg=%d, sub=%d blit=%d]\n", poc->PoC_frame_ddr, numBlit, fpga_vga_vcount, fpga_vga_frame, fpga_vga_frameskip, fpga_vga_vblank, fpga_vga_f1, fpga_vram_pixels, fpga_vram_queue, fpga_vram_synced, fpga_vram_ready, fpga_vram_end_frame, fpga_lz4_state, fpga_lz4_uncompressed, fpga_lz4_writed, fpga_lz4_run, fpga_lz4_resume, fpga_lz4_test1, fpga_lz4_test2, fpga_lz4_cmd_fskip, fpga_lz4_stop, fpga_lz4_ABCD, fpga_lz4_compressed, fpga_lz4_gravats, fpga_lz4_llegits, fpga_lz4_subframe_bytes, fpga_lz4_subframe_blit);
-				       		sendACK(udp_frame, udp_vsync);
+				       		sendACK(udp_frame, udp_vsync);				       		
 				       	}
 				}; break;
 
@@ -2165,14 +2236,24 @@ static inline int process_packet_eth(struct xsk_socket_info *xsk, uint64_t addr,
 		memcpy(&ip->daddr, &tmp_ip, sizeof(tmp_ip));
 
 		memcpy(&udp->dest,&udp->source, sizeof(udp->dest));
-		udp->source = htons(UDP_PORT);
+		udp->source = htons(UDP_PORT);				
 		
-		//precalculate ip checksum header
+		//precalculate ip checksum header	
 		udp->check = 0;
+		ip->check = 0;	
 		udp->len = htons(13 + sizeof(struct udphdr));
-		udp_check_13 = sum_udp_checksum(ip, udp->len); 
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 13);
 		update_iph_checksum(ip);
+		ip_check_13 = ip->check;		
+		udp_check_13 = sum_udp_checksum(ip, udp->len); 
+				
+		udp->check = 0;
+		ip->check = 0;	
+		udp->len = htons(1 + sizeof(struct udphdr));
+		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 1);
+		update_iph_checksum(ip);
+		ip_check_1 = ip->check;		
+		udp_check_1 = sum_udp_checksum(ip, udp->len); 						
 				
 		memcpy(&sendbuf[0], &data_pointer[0], 42);
 	}
@@ -2195,30 +2276,36 @@ static inline int process_packet_eth(struct xsk_socket_info *xsk, uint64_t addr,
 		memcpy(&ip->saddr, &ip->daddr, sizeof(tmp_ip));
 		memcpy(&ip->daddr, &tmp_ip, sizeof(tmp_ip));
 
-		udp->dest = udp->source;
-		udp->source = htons(UDP_PORT_INPUTS);
-
-		udp->check = 0;
+		memcpy(&udp->dest,&udp->source, sizeof(udp->dest));
+		udp->source = htons(UDP_PORT_INPUTS);		
 		
 		//precalculate ip checksum headers
+		udp->check = 0;
+		ip->check = 0;
 		udp->len = htons(9 + sizeof(struct udphdr));
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 9);
 		update_iph_checksum(ip);
 		inputs_ip_check_9 = ip->check;
 		inputs_udp_check_9 = sum_udp_checksum(ip, udp->len); 
 
+		udp->check = 0;
+		ip->check = 0;
 		udp->len = htons(17 + sizeof(struct udphdr));
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 17);
 		update_iph_checksum(ip);
 		inputs_ip_check_17 = ip->check;
 		inputs_udp_check_17 = sum_udp_checksum(ip, udp->len); 
 
+		udp->check = 0;
+		ip->check = 0;
 		udp->len = htons(37 + sizeof(struct udphdr));
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 37);
 		update_iph_checksum(ip);
 		inputs_ip_check_37 = ip->check;
 		inputs_udp_check_37 = sum_udp_checksum(ip, udp->len); 
 
+		udp->check = 0;
+		ip->check = 0;
 		udp->len = htons(41 + sizeof(struct udphdr));
 		ip->tot_len = htons(sizeof(iphdr) + sizeof(struct udphdr) + 41);
 		update_iph_checksum(ip);
@@ -2333,7 +2420,7 @@ static void groovy_start()
 {
 	if (!groovyServer)
 	{
-		printf("Groovy-Server 0.5 starting\n");
+		printf("Groovy-Server %d starting\n", GROOVY_VERSION);
 
 		// get HPS Server Settings
 		groovy_FPGA_hps();
@@ -2390,7 +2477,7 @@ static void groovy_start()
 		groovyLogo = 1;
 	}
 
-    	printf("Groovy-Server 0.5 started\n");
+    	printf("Groovy-Server %d started\n", GROOVY_VERSION);
 
 start_error:
     	{}
@@ -2437,7 +2524,7 @@ void groovy_stop()
 		sockfd = 0;
 		sockfdInputs = 0;		
 	}
-	printf("Groovy-Server 0.5 stopped\n");
+	printf("Groovy-Server %d stopped\n", GROOVY_VERSION);
 	groovyServer = 0;
 }
 
