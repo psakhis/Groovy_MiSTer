@@ -103,6 +103,10 @@ https://youtu.be/H0175WJFpUs
     *Tested with arcade_15 monitor on switchres.ini (use scandoubler for a 31khz monitor)
     *Hacked mode 13h to get sync with 60hz instead of 70hz (no tearing)
     *For see a log file, run with >log.txt
+
+### [Dolphin]() 
+  New submenu of graphics options. After emulators starts gamepads from MiSTer can be mapped.
+    
     
 ### [MiSTerCast](https://github.com/iequalshane/MiSTerCast) 
 Thanks to @Shane for this great windows utility to mirror desktop.
