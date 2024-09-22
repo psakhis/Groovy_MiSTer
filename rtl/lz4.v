@@ -42,7 +42,9 @@ module lz4 (
       output [3:0]  lz4_state,
       output [31:0] lz4_writed_bytes,
       output [31:0] lz4_readed_bytes,
-      output        lz4_read_ready          
+      output        lz4_read_ready,
+      
+      input  [63:0] lz4_delta_long		      // used for add 8-bit overflow difference from last frame
 );
 
 parameter BLOCKS_SIZE = 16'd128;  //enough for max ddr_burst
@@ -168,7 +170,8 @@ always @(posedge lz4_clk) begin
          error              <= 1'b0;                                 
        end                                   
                        
-       paused        <= 1'b0; 
+       paused          <= 1'b0; 
+		 		 
 
        if (lz4_run && (!long_valid || !lz4_stop)) begin                    
                     
@@ -545,7 +548,15 @@ assign blocks_readed = block_read_total >= lz4_compressed_bytes;
 assign lz4_write_ready = (block_write_total - block_read_total) < BLOCKS_SIZE << 3; 
 assign lz4_uncompressed_byte = uncompressed_byte;
 assign lz4_byte_valid = byte_valid;
-assign lz4_uncompressed_long = uncompressed_long;
+//assign lz4_uncompressed_long = uncompressed_long; 
+assign lz4_uncompressed_long[07:00] = uncompressed_long[07:00] + lz4_delta_long[07:00],
+       lz4_uncompressed_long[15:08] = uncompressed_long[15:08] + lz4_delta_long[15:08],  
+		 lz4_uncompressed_long[23:16] = uncompressed_long[23:16] + lz4_delta_long[23:16],  
+		 lz4_uncompressed_long[31:24] = uncompressed_long[31:24] + lz4_delta_long[31:24],  
+		 lz4_uncompressed_long[39:32] = uncompressed_long[39:32] + lz4_delta_long[39:32],  
+		 lz4_uncompressed_long[47:40] = uncompressed_long[47:40] + lz4_delta_long[47:40],  
+		 lz4_uncompressed_long[55:48] = uncompressed_long[55:48] + lz4_delta_long[55:48],  
+		 lz4_uncompressed_long[63:56] = uncompressed_long[63:56] + lz4_delta_long[63:56];		 
 assign lz4_long_valid = long_valid;
 assign lz4_uncompressed_bytes = uncompressed_bytes;
 assign lz4_paused = paused;

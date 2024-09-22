@@ -19,14 +19,14 @@ extern "C" {
 GroovyMister* gmw;
 int gmw_inputsBinded;
 
-MODULE_API_GMW void gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu)
+MODULE_API_GMW int gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu)
 {
 	if (gmw == NULL)
 	{
 		gmw = new GroovyMister;
 		gmw_inputsBinded = 0;
 	}
-	gmw->CmdInit(misterHost, 32100, lz4Frames, soundRate, soundChan, rgbMode, mtu);
+	return gmw->CmdInit(misterHost, 32100, lz4Frames, soundRate, soundChan, rgbMode, mtu);	
 }
 
 MODULE_API_GMW void gmw_close(void)
@@ -56,11 +56,11 @@ MODULE_API_GMW void gmw_switchres(double pClock, uint16_t hActive, uint16_t hBeg
 	}
 }
 
-MODULE_API_GMW char* gmw_get_pBufferBlit(void)
+MODULE_API_GMW char* gmw_get_pBufferBlit(uint8_t field)
 {
 	if (gmw != NULL)
 	{
-		return gmw->pBufferBlit;
+		return gmw->getPBufferBlit(field);
 	}
 	else
 	{
@@ -69,11 +69,24 @@ MODULE_API_GMW char* gmw_get_pBufferBlit(void)
 	}
 }
 
-MODULE_API_GMW void gmw_blit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin)
+MODULE_API_GMW char* gmw_get_pBufferBlitDelta(void)
 {
 	if (gmw != NULL)
 	{
-		gmw->CmdBlit(frame, field, vCountSync, margin);
+		return gmw->getPBufferBlitDelta();
+	}
+	else
+	{
+		printf("[MiSTer] gmw_get_pBufferBlitDelta failed\n");
+		return NULL;
+	}
+}
+
+MODULE_API_GMW void gmw_blit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin, uint32_t matchDeltaBytes)
+{
+	if (gmw != NULL)
+	{
+		gmw->CmdBlit(frame, field, vCountSync, margin, matchDeltaBytes);
 	}
 	else
 	{
@@ -85,7 +98,7 @@ MODULE_API_GMW char* gmw_get_pBufferAudio(void)
 {
 	if (gmw != NULL)
 	{
-		return gmw->pBufferAudio;
+		return gmw->getPBufferAudio();
 	}
 	else
 	{

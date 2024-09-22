@@ -8,6 +8,12 @@
  #include <ws2tcpip.h>
  #include <mswsock.h>
  #include "rio.h"
+#else
+ #include <cstring>
+ #include <cstdio>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <time.h>
 #endif
 
 #ifndef GROOVYMISTER_VERSION
@@ -84,24 +90,26 @@ typedef unsigned long DWORD;
 class GroovyMister
 {
  public:
-
-	char *pBufferBlit; 	 // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
-	char *pBufferAudio; 	 // This buffer are registered and aligned for sending audio. Populate it before CmdAudio
+	 
 	fpgaStatus fpga; 	 // Data with last received ACK
 	fpgaJoyInputs joyInputs; // Data with last joystick inputs received
 	fpgaPS2Inputs ps2Inputs; // Data with last ps2 inputs received
 
 	GroovyMister();
 	~GroovyMister();
-
+	
+	char* getPBufferBlit(uint8_t field); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
+	char* getPBufferBlitDelta(void); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit with delta difference between actual frame and last
+	char* getPBufferAudio(void); // This buffer are registered and aligned for sending audio. Populate it before CmdAudio
+	
 	// Close connection
 	void CmdClose(void);
-	// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc, 3-lz4 adaptative), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565), mtu source
-	uint8_t CmdInit(const char* misterHost, uint16_t misterPort, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
+	// Init streaming with ip, port
+	int CmdInit(const char* misterHost, uint16_t misterPort, int lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
 	// Change resolution (check https://github.com/antonioginer/switchres) with modeline
 	void CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
 	// Stream frame, field = 0 for progressive, vCountSync = 0 for auto frame delay or number of vertical line to sync with, margin with nanoseconds for auto frame delay)
-	void CmdBlit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin);
+	void CmdBlit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin, uint32_t matchDeltaBytes);
 	// Stream audio
 	void CmdAudio(uint16_t soundSize);
 	// getACK is used internal on WaitSync, dwMilliseconds = 0 will time out immediately if no new data
@@ -132,9 +140,8 @@ class GroovyMister
 	RIO_BUF m_sendRioBuffer;
 	RIO_BUFFERID m_receiveRioBufferId;
 	RIO_BUF m_receiveRioBuffer;
-	RIO_BUFFERID m_sendRioBufferBlitId;
-	RIO_BUF m_sendRioBufferBlit;
-	RIO_BUF *m_pBufsBlit;
+	RIO_BUFFERID m_sendRioBufferBlitId[2];	
+	RIO_BUF *m_pBufsBlit[2];
 	RIO_BUFFERID m_sendRioBufferAudioId;
 	RIO_BUF m_sendRioBufferAudio;
 	RIO_BUF *m_pBufsAudio;
@@ -158,8 +165,10 @@ class GroovyMister
 	char m_bufferSend[26];
 	char m_bufferReceive[13];
 	char m_bufferInputsReceive[41];
-	char *m_pBufferLZ4;
+	char *m_pBufferBlit[2];
+	char *m_pBufferBlitDelta;
 	char *m_pBufferAudio;
+	char *m_pBufferLZ4[2];
 	uint8_t m_lz4Frames;
 	uint8_t m_soundChan;
 	uint8_t m_rgbMode;
@@ -173,10 +182,14 @@ class GroovyMister
 	uint32_t m_emulationTime;
 	uint16_t m_mtu;
 	uint8_t m_doCongestionControl;
+	uint8_t m_core_version;
+	uint32_t m_network_ping;
+	uint8_t m_delta_enabled[2];
+	uint8_t m_isConnected;
 
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);
 	void Send(void *cmd, int cmdSize);
-	void SendStream(uint8_t whichBuffer, uint32_t bytesToSend, uint32_t cSize);
+	void SendStream(uint8_t whichBuffer, uint8_t field, uint32_t bytesToSend, uint32_t cSize);
 	void setTimeStart(void);
 	void setTimeEnd(void);
 	uint32_t DiffTime(void);

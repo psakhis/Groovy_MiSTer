@@ -108,18 +108,50 @@ typedef struct MODULE_API_GMW{
 	uint8_t  ps2MouseZ; 	//byte 3 ps2 mouse Z
 }  gmw_fpgaPS2Inputs;
 
+enum Lz4FramesCode { //gmw_init lz4Frames
+    LZ4_OFF = 0, //RAW frames
+    LZ4 = 1,
+    LZ4_DELTA = 2,
+    LZ4_HC = 3,
+    LZ4_HC_DELTA = 4,
+    LZ4_ADPTATIVE = 5,
+    LZ4_ADPTATIVE_DELTA = 6
+};
+
+enum SoundRateCode { //gmw_init soundRate
+    RATE_OFF = 0,
+    RATE_22050 = 1,
+    RATE_44100 = 2,
+    RATE_48000 = 3
+};
+
+enum SoundChanCode { //gmw_init soundChan
+    CHAN_OFF = 0,
+    CHAN_MONO = 1,
+    CHAN_STEREO = 2
+};
+
+enum RGBModeCode { //gmw_init rgbMode
+    RGB_888 = 0,
+    RGB_A888 = 1,
+    RGB_565 = 2
+};
+
 /* Declaration of the wrapper functions */
 
-// Init streaming with ip, port, (lz4frames = 0-raw, 1-lz4, 2-lz4hc, 3-lz4 adaptative), soundRate(1-22k, 2-44.1, 3-48 khz), soundChan(1 or 2), rgbMode(0-RGB888, 1-RGBA888, 2-RGB565), mtu source
-MODULE_API_GMW void gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
+// Init streaming with ip, port and mtu size (typical 1500 or 3800 for MiSTer jumbo frames)
+// A negative value is returned if connection fails
+MODULE_API_GMW int gmw_init(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
 // Close stream
 MODULE_API_GMW void gmw_close(void);
 // Change resolution (check https://github.com/antonioginer/switchres) for modeline generation (interlace=2 for progressive framebuffer)
 MODULE_API_GMW void gmw_switchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
 // This buffer are registered and aligned for sending rgb. Populate it before gmw_blit
-MODULE_API_GMW char* gmw_get_pBufferBlit(void);
-// Stream frame, field = 0 for progressive, vCountSync = 0 for auto frame delay or number of vertical line to sync with, margin with nanoseconds for auto frame delay)
-MODULE_API_GMW void gmw_blit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin);
+MODULE_API_GMW char* gmw_get_pBufferBlit(uint8_t field);
+// This buffer are registered and aligned for sending rgb. Populate it before gmw_blit. Here will be difference between actual frame and last with 8-bit overflow
+MODULE_API_GMW char* gmw_get_pBufferBlitDelta(void);
+// Stream frame, field = 0 for progressive, vCountSync = 0 for auto frame delay or number of vertical line to sync with, margin with nanoseconds for auto frame delay), matchDeltaBytes for delta frames
+MODULE_API_GMW void gmw_blit(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin, uint32_t matchDeltaBytes);
 // This buffer are registered and aligned for sending rgb. Populate it before gmw_audio
 MODULE_API_GMW char* gmw_get_pBufferAudio(void);
 // Stream audio
@@ -142,7 +174,7 @@ MODULE_API_GMW void gmw_getJoyInputs(gmw_fpgaJoyInputs* joyInputs);
 MODULE_API_GMW void gmw_getPS2Inputs(gmw_fpgaPS2Inputs* ps2Inputs);
 
 // get version
-MODULE_API_GMW const char* gmw_get_version();
+MODULE_API_GMW const char* gmw_get_version(void);
 // Verbose level 0,1,2 (min to max)
 MODULE_API_GMW void gmw_set_log_level(int level);
 
@@ -150,11 +182,12 @@ MODULE_API_GMW void gmw_set_log_level(int level);
 /* Inspired by https://stackoverflow.com/a/1067684 */
 typedef struct MODULE_API_GMW
 {
-	void (*init)(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
+	int  (*init)(const char* misterHost, uint8_t lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu);
 	void (*close)(void);
 	void (*switchres)(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
-	char*(*get_pBufferBlit)(void);
-	void (*blit)(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin);
+	char*(*get_pBufferBlit)(uint8_t field);
+	char*(*get_pBufferBlitDelta)(void);
+	void (*blit)(uint32_t frame, uint8_t field, uint16_t vCountSync, uint32_t margin, uint32_t matchDeltaBytes);
 	char*(*get_pBufferAudio)(void);
 	void (*audio)(uint16_t soundSize);
 	void (*waitSync)(void);

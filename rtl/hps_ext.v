@@ -23,22 +23,14 @@ module hps_ext
     input             clk_sys,
     inout      [35:0] EXT_BUS,   
     input      [7:0]  state, 
-    input             hps_rise,     
-    input      [1:0]  hps_verbose,  
-    input             hps_blit,     
-    input             hps_screensaver,      
-    input      [1:0]  hps_kbd_inputs,      
-    input      [1:0]  hps_joy_inputs,      
-    input             hps_audio,
-    input             hps_jumbo_frames,
-    input             hps_server_type,
-    input      [1:0]  hps_arm_clock,
+    input             hps_rise,    
+    input             hps_audio,	 
     output reg [1:0]  sound_rate = 0,
     output reg [1:0]  sound_chan = 0,
     output reg [1:0]  rgb_mode = 0, 
     input             vga_frameskip,        
     input      [15:0] vga_vcount,   
-    input      [31:0] vga_frame,    
+    input      [23:0] vga_frame,    
     input             vga_vblank,   
     input             vga_f1,
     input      [23:0] vram_pixels,
@@ -61,14 +53,10 @@ module hps_ext
     output reg [31:0] lz4_size = 0,
     output reg [1:0]  lz4_ABCD = 0,
     output reg [1:0]  lz4_field = 0,
+	 output reg        lz4_delta = 0,
     input      [31:0] lz4_uncompressed_bytes,   
     output reg        cmd_blit_vsync = 0
-/* DEBUG 
-    output reg [24:0] blit_frame = 0,
-    output reg [24:0] blit_pixels = 0,
-    output reg [24:0] blit_bytes = 0,
-    output reg [15:0] blit_num = 0,
-    output reg        blit_field = 0,
+/* DEBUG    
     input      [31:0]  PoC_subframe_wr_bytes,
     input             lz4_run,
     input             PoC_lz4_resume,
@@ -81,9 +69,8 @@ module hps_ext
     input     [31:0]  lz4_gravats,
     input     [31:0]  lz4_llegits,
     input     [31:0]  PoC_subframe_lz4_bytes,
-    input     [15:0]  PoC_subframe_blit_lz4 */
-
-    
+    input     [15:0]  PoC_subframe_blit_lz4 
+*/   
  );
 
 assign EXT_BUS[15:0] = io_dout;
@@ -94,10 +81,9 @@ wire io_enable = EXT_BUS[34];
 
 localparam EXT_CMD_MIN = GET_GROOVY_STATUS;
 localparam EXT_CMD_MAX = SET_BLIT_FIELD_LZ4;
-//localparam EXT_CMD_MAX = SET_BLIT_BYTES;
+
 
 localparam GET_GROOVY_STATUS  = 'hf0;
-localparam GET_GROOVY_HPS     = 'hf1;
 localparam SET_INIT           = 'hf2;
 localparam SET_SWITCHRES      = 'hf3;
 localparam SET_BLIT           = 'hf4;
@@ -106,19 +92,12 @@ localparam SET_AUDIO          = 'hf6;
 localparam SET_BLIT_LZ4       = 'hf7;
 localparam SET_BLIT_FIELD_LZ4 = 'hf8;
 
-//new blit sppi
-/*
-localparam SET_BLIT_FRAME     = 'hf9;
-localparam SET_BLIT_PIXELS    = 'hfa;
-localparam SET_BLIT_BYTES     = 'hfb;
-*/
-
 reg [15:0] io_dout;
 reg        dout_en = 0;
 reg  [4:0] byte_cnt;
 
 //snapshot
-reg [31:0] hps_vga_frame;
+reg [23:0] hps_vga_frame;
 reg [15:0] hps_vga_vcount;
 reg        hps_vga_vblank;
 reg        hps_vga_f1;
@@ -182,22 +161,16 @@ always@(posedge clk_sys) begin
                 if(byte_cnt == 0) begin
                         cmd <= io_din;
                         dout_en <= (io_din >= EXT_CMD_MIN && io_din <= EXT_CMD_MAX);
-                        if(io_din == GET_GROOVY_STATUS)  io_dout <= hps_rise_req;                
-                        if(io_din == GET_GROOVY_HPS)     io_dout <= hps_rise_req;                
+                        if(io_din == GET_GROOVY_STATUS)  io_dout <= hps_rise_req;                                                      
                         if(io_din == SET_INIT)           io_dout <= hps_rise_req;                
                         if(io_din == SET_SWITCHRES)      io_dout <= hps_rise_req;                                        
                         if(io_din == SET_BLIT)           io_dout <= hps_rise_req;                                        
                         if(io_din == SET_LOGO)           io_dout <= hps_rise_req;                                        
                         if(io_din == SET_AUDIO)          io_dout <= hps_rise_req;                                        
                         if(io_din == SET_BLIT_LZ4)       io_dout <= hps_rise_req;                          
-                        if(io_din == SET_BLIT_FIELD_LZ4) io_dout <= hps_rise_req;                          
-                        //if(io_din == SET_BLIT_FRAME)     io_dout <= hps_rise_req;                          
-                        //if(io_din == SET_BLIT_PIXELS)    io_dout <= hps_rise_req;                          
-                        //if(io_din == SET_BLIT_BYTES)     io_dout <= hps_rise_req;                          
-                end else begin
-              
+                        if(io_din == SET_BLIT_FIELD_LZ4) io_dout <= hps_rise_req;                                                                       
+                end else begin              
                         case(cmd)
- 
                                GET_GROOVY_STATUS: case(byte_cnt)                                        
                                            1: 
                                            begin                                                      
@@ -212,8 +185,7 @@ always@(posedge clk_sys) begin
                                               hps_vram_synced    <= vram_synced;
                                               hps_vram_end_frame <= vram_end_frame;
                                               hps_vram_ready     <= vram_ready;                                          
-                                              hps_lz4_uncompressed_bytes <= lz4_uncompressed_bytes;
-
+                                              hps_lz4_uncompressed_bytes <= lz4_uncompressed_bytes;															
 // DEBUG 
 /*
                                               hps_state <= state;
@@ -231,9 +203,8 @@ always@(posedge clk_sys) begin
                                               hps_PoC_subframe_lz4_bytes <= PoC_subframe_lz4_bytes;
                                               hps_PoC_subframe_blit_lz4 <= PoC_subframe_blit_lz4;
 */
-
                                            end
-                                           2: io_dout <= hps_vga_frame[31:16];                                                     
+                                           2: io_dout <= {8'd0, hps_vga_frame[23:16]};                                                     
                                            3: io_dout <= hps_vga_vcount; 
                                            4: io_dout <= {hps_vram_queue[7:0], (state == 8'd0) ? 1'b0 : 1'b1, hps_audio, hps_vga_f1, hps_vga_vblank, hps_vga_frameskip, hps_vram_synced, hps_vram_end_frame, hps_vram_ready};    
                                            5: io_dout <= hps_vram_queue[23:8];                                                                                       
@@ -258,11 +229,7 @@ always@(posedge clk_sys) begin
                                            22: io_dout <= hps_PoC_subframe_blit_lz4;      
 */                                                                                                      
                                         endcase
-                                                
-                               GET_GROOVY_HPS: case(byte_cnt)
-                                                 1: io_dout <= {4'd0, hps_arm_clock, hps_server_type, hps_jumbo_frames, hps_joy_inputs, hps_kbd_inputs, hps_screensaver, hps_blit, hps_verbose};                                                                                                 
-                                               endcase                                 
-                                                
+                                                                             
                                SET_INIT: case(byte_cnt)
                                            1: 
                                            begin     
@@ -278,9 +245,7 @@ always@(posedge clk_sys) begin
                                              sound_rate      <= 0;
                                              sound_chan      <= 0;
                                              rgb_mode        <= 0;
-                                             switchres_frame <= 32'd0;
-                                             //blit_frame  <= 24'd0;
-                                             //blit_pixels <= 24'd0;
+                                             switchres_frame <= 32'd0;                                           
                                            end  
                                            2:
                                            begin
@@ -320,7 +285,7 @@ always@(posedge clk_sys) begin
                                              end  
                                            endcase 
                                            
-                                SET_BLIT_LZ4: case(byte_cnt)
+                                SET_BLIT_LZ4: case(byte_cnt) //deprecated
                                            1: lz4_ABCD       <= io_din[1:0];
                                            2: lz4_size[15:0] <= io_din;                                          
                                            3:
@@ -333,37 +298,20 @@ always@(posedge clk_sys) begin
                                          endcase                 
                                          
                                 SET_BLIT_FIELD_LZ4: case(byte_cnt)
-                                           1: lz4_ABCD        <= io_din[1:0];
-                                           2: lz4_size[15:0]  <= io_din;                                          
-                                           3: lz4_size[31:16] <= io_din;                                            
-                                           4:
+                                           1: 
+														 begin
+														    lz4_ABCD        <= io_din[1:0];
+															 lz4_field       <= io_din[3:2];
+															 lz4_delta       <= io_din[4];
+														 end 
+                                           2: lz4_size[15:0]  <= io_din;                                       
+                                           3:
                                            begin
-                                              lz4_field       <= io_din[1:0]; 
+                                              lz4_size[31:16] <= io_din;
                                               cmd_blit_lz4    <= 1'b1;
                                               cmd_blit_vsync  <= 1'b1;
                                            end                                                                                                                  
-                                         endcase 
-/*      
-                                SET_BLIT_FRAME: case(byte_cnt)
-                                           1: m_temp      <= io_din; 
-                                           2: 
-                                           begin
-                                             blit_frame  <= {io_din[7:0], m_temp};
-                                             blit_field  <= io_din[8];
-                                             blit_pixels <= 24'd0;
-                                             blit_num    <= 16'd0;
-                                           end                                                                                                                                                             
-                                         endcase
-                                         
-                                SET_BLIT_PIXELS: case(byte_cnt)
-                                           1: m_temp      <= io_din; 
-                                           2: 
-                                           begin
-                                             blit_pixels <= {io_din[7:0], m_temp};                                          
-                                             blit_num    <= blit_num + 1'b1;
-                                           end  
-                                         endcase                                         
-*/ 
+                                         endcase  
                        endcase
                 end
         end
