@@ -105,7 +105,13 @@ wire[15:0] V_total;
 wire[15:0] V_pulse_start;
 wire[15:0] V_pulse_end;
 
-assign H_pulse_start = (interlaced && field) ? (H+HFP) >> 1 : H+HFP;
+// On the odd field vsync must fall exactly half a line after the hsync edge, so it
+// lands at (H+HFP) + H_total/2, wrapped back into the line. One conditional subtract
+// is enough because the sum is always below 1.5 * H_total.
+wire[15:0] H_total_line = H+HFP+HS+HBP;
+wire[15:0] H_half_line  = H+HFP + (H_total_line >> 1);
+
+assign H_pulse_start = (interlaced && field) ? (H_half_line >= H_total_line ? H_half_line - H_total_line : H_half_line) : H+HFP;
 assign V_total       = (interlaced && field) ? V+VBP+VFP+VS - 1'b1 : V+VBP+VFP+VS;
 assign V_pulse_start = (interlaced && field) ? V+VFP + 1'b1 : V+VFP;
 assign V_pulse_end   = (interlaced && field) ? V+VFP+VS + 1'b1 : V+VFP+VS;
