@@ -92,6 +92,10 @@ extern "C" {
    Check gmw_get_input_caps() for what was actually granted. */
 #define GMW_CAP_INPUTS_V2 0x01 /* joystick packets v2: 32-bit masks + analog triggers */
 #define GMW_CAP_RUMBLE    0x02 /* client may send rumble messages on the inputs socket */
+/* Promises this client sends keepalives while idle, which is what licenses the core to close
+   a silent session. Set it with gmw_set_keepalive(1), NOT gmw_set_input_caps - it is not an
+   input capability. Without it the core holds a quiet session indefinitely. */
+#define GMW_CAP_KEEPALIVE 0x04 /* client sends CMD_GET_STATUS keepalives while idle */
 
 /* FPGA data received on ACK */
 typedef struct MODULE_API_GMW
@@ -103,7 +107,8 @@ typedef struct MODULE_API_GMW
 
 	uint8_t vramEndFrame; 	//1-fpga has all pixels on vram for last CmdBlit
 	uint8_t vramReady;	//1-fpga has free space on vram
-	uint8_t vramSynced;	//1-fpga has synced (not red screen)
+	uint8_t vramSynced;	//1-fpga is up. NOT an underrun detector: the condition self-clears
+			//within about a raster line, so this per-blit sample almost never catches one
 	uint8_t vgaFrameskip;	//1-fpga used framebuffer (volatile framebuffer off)
 	uint8_t vgaVblank;	//1-fpga is on vblank
 	uint8_t vgaF1;		//1-field for interlaced
@@ -187,6 +192,8 @@ MODULE_API_GMW void gmw_close(void);
 MODULE_API_GMW void gmw_send_close(void);
 // Send a 1-byte CMD_GET_STATUS keepalive on the video socket to hold an idle
 // session against the core's idle timeout. Call while alive but not blitting.
+// Only matters if you advertised GMW_CAP_KEEPALIVE via gmw_set_keepalive(1):
+// without it the core never closes a silent session in the first place.
 MODULE_API_GMW void gmw_send_keepalive(void);
 // 1 if the shared connection (from gmw_init) is live. Pad code should check
 // this before touching the input socket so it never creates a second client.
@@ -235,6 +242,11 @@ MODULE_API_GMW void gmw_set_input_caps(uint8_t caps);
 // the probe landed on v1). Gate rumble/trigger handling on this, not on what
 // was requested.
 MODULE_API_GMW uint8_t gmw_get_input_caps(void);
+// Advertise GMW_CAP_KEEPALIVE, before gmw_init. Enable it ONLY if you actually call
+// gmw_send_keepalive() while idle, more often than the core's shortest OSD idle timeout
+// (5s today): opting in is what allows the core to close you for going quiet. Off by
+// default, so a client that never opts in may pause indefinitely.
+MODULE_API_GMW void gmw_set_keepalive(uint8_t on);
 // Rumble player 0/1's pad (strong/weak motor 0..255). Requires GMW_CAP_RUMBLE
 // negotiated; the MiSTer gates it per pad in OSD -> System -> Controllers ->
 // <player> -> Rumble (default On), and force-stops motors on session
@@ -335,6 +347,7 @@ typedef struct MODULE_API_GMW
 	char*(*get_pBufferPreEncoded)(void);
 	void (*set_pre_encoded_size)(uint32_t cSize);
 	uint32_t (*encode_nlc)(const char* rgbFrame, char* out);
+	void (*set_keepalive)(uint8_t on);   /* appended only; existing offsets unchanged */
 } gmwAPI;
 
 

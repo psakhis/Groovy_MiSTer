@@ -825,7 +825,10 @@ always@(posedge clk_sys) begin
        if (vga_de && !vram_wait_vblank && vram_start) begin                              
          pixel_counter                <= pixel_counter + 1'd1;  
          if (!fifo_ahead) begin      
-           pixel                      <= {R_NO_VRAM, G_NO_VRAM, B_NO_VRAM};
+           // pixel holds its last value, so a starve shows as a short smear rather than a red bar.
+           // The sync-loss counter and the starved-pixel count report it instead. To mark starves
+           // in red again while debugging, restore:
+           //   pixel                    <= {R_NO_VRAM, G_NO_VRAM, B_NO_VRAM};
            vram_out_sync_pend         <= 1'b1;
            if (!vram_defer_sync) vram_out_sync <= 1'b1;   // legacy immediate resync
            vram_starve_r              <= 1'b1;

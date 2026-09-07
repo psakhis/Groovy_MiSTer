@@ -147,6 +147,7 @@ GroovyMister::GroovyMister()
 	m_nlcPack = 1;       // TILED default; setNlcPack(2) selects RICE, which with near level 1 fits under the HPS ingest ceiling
 	m_nearLevel = 0;     // lossless default; near 1 recommended for heavy 3D content
 	m_inputCaps = 0;     // legacy v1 inputs; setInputCaps(GM_CAP_INPUTS_V2 | ...) to opt in
+	m_keepAlive = 0;     // no keepalive promise: the core leaves a silent session alone
 	m_preEncodedSize = 0;
 	m_interlace = 0;
 	m_vTotal = 0;
@@ -524,6 +525,13 @@ void GroovyMister::setInputCaps(uint8_t caps)
 	m_inputCaps = caps;                       // sent as CMD_INIT byte[5] (len-6 init; 0 = len-5, legacy)
 }
 
+void GroovyMister::setKeepAlive(uint8_t on)
+{
+	// Kept apart from m_inputCaps so the two opt-ins cannot clobber each other whichever order
+	// the host calls them in; they are combined into the caps byte in CmdInit.
+	m_keepAlive = on ? 1 : 0;
+}
+
 int GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, int lz4Frames, uint32_t soundRate, uint8_t soundChan, uint8_t rgbMode, uint16_t mtu)
 {
 	// NLC only works with rgbMode 0. The FPGA decoder (rtl/nlc_decode_ddr.v) instantiates
@@ -792,10 +800,10 @@ int GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, int lz4Fr
 	// than GROOVY_VERSION 2 (their length check rejects it, no ACK), so probe
 	// the version first and drop to a len-5 init (v1 inputs) when the core
 	// can't take the caps byte. getInputCaps() exposes the outcome.
-	m_negotiatedCaps = m_inputCaps;
+	m_negotiatedCaps = m_inputCaps | (m_keepAlive ? GM_CAP_KEEPALIVE : 0);
 	uint8_t rioRecvPosted = 0;
 	(void) rioRecvPosted; // only read on the _WIN32 RIO path
-	if (m_inputCaps)
+	if (m_negotiatedCaps)
 	{
 		m_core_version = 0;
 		m_bufferSend[0] = CMD_GET_VERSION;
@@ -810,7 +818,7 @@ int GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, int lz4Fr
 		getACK(60);
 		if (m_core_version < 2)
 		{
-			LOG(0,"[MiSTer] Core version %d < 2: no caps support, falling back to v1 inputs\n", m_core_version);
+			LOG(0,"[MiSTer] Core version %d < 2: no caps support, falling back to v1 inputs and no keepalive promise\n", m_core_version);
 			m_negotiatedCaps = 0;
 		}
 	}

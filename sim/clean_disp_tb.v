@@ -464,6 +464,14 @@ module clean_disp_tb;
     // ----------------------------------------------------------------- REAL clean vga.v
     wire        vram_req_ready, vram_synced, vram_end_frame;
     wire        vram_starve;
+
+    // Mirrors the Groovy.sv framebuffer-lead select, which is an OSD option there and a plusarg
+    // here: +lead=1|4|8|16. The FSM body latches autoblit_sh from autoblit_sh_sel in S_Idle.
+    integer LEAD;
+    reg  [2:0]  autoblit_sh = 3'd0;
+    wire [23:0] autoblit_lead = 24'd1 << autoblit_sh;
+    wire [2:0]  autoblit_sh_sel = (LEAD >= 16) ? 3'd4 : (LEAD >= 8) ? 3'd3 : (LEAD >= 4) ? 3'd2 : 3'd0;
+    initial if (!$value$plusargs("lead=%d", LEAD)) LEAD = 1;
     wire [23:0] vram_pixels, vram_queue, vga_frame, vga_pixels;
     wire [15:0] vga_vcount;
     wire [7:0]  vr, vg, vb; wire vga_de_w, vga_hblank, VGA_F1, vga_hs, vga_vs;

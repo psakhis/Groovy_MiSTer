@@ -231,6 +231,7 @@ localparam CONF_STR = {
    "P1-;",
    "D4P1-,Debug options;",
    "P1O[32],Volatile framebuffer,Off,On;",    
+   "P1O[31:30],Framebuffer lead,1,4,8,16;",
    "P1O[46],Vsync overlay,Off,On;",
 	"P1-;",
 	"DBP1O[57:56],RGB mode,888,A888,565;",
@@ -247,6 +248,10 @@ localparam CONF_STR = {
    "P3O[33],Screensaver,On,Off;",   
    "P3O[45:44],ARM clock,Stock,+200Mhz,+400Mhz;",
    "P3O[42],Jumbo frames (Max MTU),Off,On;",
+   // The shortest value here is the floor a CAP_KEEPALIVE client must beat: it cannot read this
+   // setting, so it has to assume the worst case and send keepalives more often than that.
+   // Adding a shorter option silently breaks every client already in the field - version the
+   // capability bit (groovy.cpp CAP_KEEPALIVE) if that is ever needed.
    "P3O[8:7],Idle timeout,5s,10s,15s,Off;",
    "P3-;",
    "D5P3-,Send inputs;",
@@ -779,13 +784,21 @@ parameter S_Blit_Copy_Raw         = 8'd23;
 parameter S_Blit_End_Raw          = 8'd24; 
 
 // FrameSkip (non Volatile)
-// Lines of VRAM the auto-blit keeps ahead of the beam. This was one line while the auto-blit was
-// only the frameskip repeater, a fallback path where a shallow lead cost nothing. NLC mode 2 made
-// it the primary display path, and one line is about 30us of slack against a FIFO that holds 153
-// lines at 640 wide, so any DDR stall longer than a line time starves the beam and paints a red
-// line. Reading further ahead costs no latency: the framebuffer content already exists, and the
-// beam still decides when it is shown.
-parameter [23:0] AUTOBLIT_LEAD    = 24'd16;
+// Lines of VRAM the auto-blit keeps ahead of the beam, selected in the OSD (Framebuffer lead).
+// One line is about 30us of slack against a FIFO that holds 154 lines at 640 wide, so any DDR
+// stall longer than a line time starves the beam. Reading further ahead does not delay the
+// display, which the raster still times, but it does move the decoder's deadline for each line
+// the same distance earlier, spending the host's delivery budget: 1/4/8/16 lines costs
+// 31.8/127/254/508us at 640x480p60, which is 0.2/0.8/1.5/3.0 percent of a frame.
+// Every value is a power of two, so the products below stay shifts. Latched in S_Idle, which
+// runs while cmd_init is low, to keep it fixed for a session rather than moving under the
+// trigger mid-frame.
+reg  [2:0]  autoblit_sh = 3'd0;                    // 0,2,3,4 -> lead 1,4,8,16
+wire [23:0] autoblit_lead = 24'd1 << autoblit_sh;
+wire [2:0]  autoblit_sh_sel = status[31:30] == 2'd0 ? 3'd0 :   // 1 line
+                              status[31:30] == 2'd1 ? 3'd2 :   // 4
+                              status[31:30] == 2'd2 ? 3'd3 :   // 8
+                                                      3'd4;    // 16
 parameter S_Blit_Auto_Skip        = 8'd26; 
 parameter S_Blit_Auto_First       = 8'd27; 
 parameter S_Blit_Auto_Line        = 8'd28; 
@@ -923,11 +936,11 @@ always @(posedge clk_sys) begin
         PoC_state_frameskip   <= S_Blit_Auto_First;     
       end else
       if (!vblank_core) begin
-        if (vga_vcount + AUTOBLIT_LEAD + PoC_interlaced >= PoC_V && (PoC_H * AUTOBLIT_LEAD) > vram_queue && vram_queue + 20 < vram_pixels && vga_pixels > vram_pixels && vram_pixels > (PoC_H << 2)) begin // last lines interlaced
+        if (vga_vcount + autoblit_lead + PoC_interlaced >= PoC_V && (PoC_H << autoblit_sh) > vram_queue && vram_queue + 20 < vram_pixels && vga_pixels > vram_pixels && vram_pixels > (PoC_H << 2)) begin // last lines interlaced
             cmd_fskip           <= 1'b1;     
             PoC_state_frameskip <= S_Blit_Auto_End;
         end else
-        if (vga_vcount + AUTOBLIT_LEAD + PoC_interlaced < PoC_V && (PoC_H * AUTOBLIT_LEAD) > vram_queue && vram_queue + 20 < vram_pixels && ((PoC_H * (vga_vcount + AUTOBLIT_LEAD + PoC_interlaced)) >> PoC_FB_interlaced) > vram_pixels) begin // next lines
+        if (vga_vcount + autoblit_lead + PoC_interlaced < PoC_V && (PoC_H << autoblit_sh) > vram_queue && vram_queue + 20 < vram_pixels && ((PoC_H * (vga_vcount + autoblit_lead + PoC_interlaced)) >> PoC_FB_interlaced) > vram_pixels) begin // next lines
             cmd_fskip           <= 1'b1;                 
             PoC_state_frameskip <= S_Blit_Auto_Line;
         end 
@@ -978,6 +991,7 @@ always @(posedge clk_sys) begin
            vga_wait_vblank            <= 1'b0;
            vga_frameskip              <= 1'b0;
            vga_frameskip_prev         <= 1'b0;
+           autoblit_sh                <= autoblit_sh_sel;
            vram_reset                 <= 1'b1;               
            vram_active                <= 1'b0;                                                                                                                                             
            vram_wren1                 <= 1'b0;                         
@@ -1209,9 +1223,9 @@ always @(posedge clk_sys) begin
 
          S_Blit_Auto_Skip:  // calculate pixels to get next line
          begin                                                               
-           if (PoC_state_frameskip == S_Blit_Auto_First) PoC_px_frameskip <= ((PoC_H * AUTOBLIT_LEAD) << PoC_interlaced) + 24'd3;
+           if (PoC_state_frameskip == S_Blit_Auto_First) PoC_px_frameskip <= ((PoC_H << autoblit_sh) << PoC_interlaced) + 24'd3;
            else if (PoC_state_frameskip == S_Blit_Auto_End) PoC_px_frameskip <= vga_pixels;
-                else PoC_px_frameskip <= ((PoC_H * (vga_vcount + AUTOBLIT_LEAD + PoC_interlaced)) >> PoC_FB_interlaced) + 24'd3;                               
+                else PoC_px_frameskip <= ((PoC_H * (vga_vcount + autoblit_lead + PoC_interlaced)) >> PoC_FB_interlaced) + 24'd3;                               
            state <= PoC_state_frameskip == S_Blit_Auto_First ? S_Blit_Auto_First : S_Blit_Auto_Line;                                                                               
          end            
          
@@ -2454,7 +2468,7 @@ always @(posedge clk_sys) begin : dbg_freeze_detect
   // Worst frame's starved-pixel total, rather than the longest contiguous run. The auto-blit
   // refills each line, so a long stall arrives as several runs of at most PoC_H, and a contiguous
   // measure would saturate at one line however big the stall was. The per-frame total scales with
-  // the stall and compares directly against PoC_H * AUTOBLIT_LEAD, the budget the lead buys.
+  // the stall and compares directly against PoC_H * the selected lead, the budget it buys.
   if (ce_pix && dbg_starve_r) begin
     if (dbg_starve_frm != 16'hFFFF) dbg_starve_frm <= dbg_starve_frm + 16'd1;
     if (dbg_starve_frm >= dbg_starve_max) dbg_starve_max <= dbg_starve_frm + 16'd1;

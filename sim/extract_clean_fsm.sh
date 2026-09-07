@@ -31,7 +31,6 @@ awk 'f&&/^   endcase/{print "      endcase"; exit} /case \(state\)/{f=1} f{print
 echo "  states_all.vh: $(wc -l < "$OUT/states_all.vh") lines"
 # state-value + DDR localparams (single lines)
 grep "^parameter S_"   "$SRC" | sed 's/^parameter/localparam/' > "$OUT/states_params.vh"
-grep "^parameter .*AUTOBLIT_" "$SRC" | sed 's/^parameter/localparam/' >> "$OUT/states_params.vh"
 grep "^parameter DDR_" "$SRC" | sed 's/^parameter/localparam/' > "$OUT/ddr_params.vh"
 [ -s "$OUT/states_params.vh" ] && [ -s "$OUT/ddr_params.vh" ] || { echo "EXTRACT FAILED: params"; exit 1; }
 echo "  states_params.vh: $(wc -l < "$OUT/states_params.vh") lines"

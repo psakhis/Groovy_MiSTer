@@ -72,6 +72,12 @@
 // version < 2; getInputCaps() reports what was actually negotiated.
 #define GM_CAP_INPUTS_V2 0x01 // joystick packet v2: 32-bit masks + analog triggers
 #define GM_CAP_RUMBLE    0x02 // client may send rumble messages on the inputs socket
+// Promises that this client sends keepalives while idle, which is what licenses the core to
+// close a silent session. Without it the core leaves a quiet session alone, so a client that
+// does not opt in may pause indefinitely. Opting in is a contract: call CmdSendKeepAlive()
+// more often than the core's shortest OSD idle timeout (5s today) for as long as you are
+// connected but not blitting, pauses and long loads included.
+#define GM_CAP_KEEPALIVE 0x04 // client sends CMD_GET_STATUS keepalives while idle
 
 /*! fpgaStatus :
  *  Data received after CmdInit and CmdBlit calls
@@ -84,7 +90,8 @@ typedef struct fpgaStatus{
 
 	uint8_t vramEndFrame; 	//1-fpga has all pixels on vram for last CmdBlit
 	uint8_t vramReady;	//1-fpga has free space on vram
-	uint8_t vramSynced;	//1-fpga has synced (not red screen)
+	uint8_t vramSynced;	//1-fpga is up. NOT an underrun detector: the condition self-clears
+			//within about a raster line, so this per-blit sample almost never catches one
 	uint8_t vgaFrameskip;	//1-fpga used framebuffer (volatile framebuffer off)
 	uint8_t vgaVblank;	//1-fpga is on vblank
 	uint8_t vgaF1;		//1-field for interlaced
@@ -158,6 +165,9 @@ class GroovyMister
 	void setNlcPack(uint8_t pack);       // NLC entropy front-end: 1=TILED (default), 2=RICE (CMD_INIT byte[1] bit 7)
 	void setNearLevel(uint8_t lvl);      // NLC near-lossless level 0-3 (0=lossless default; CMD_INIT byte[1] bits [3:2])
 	void setInputCaps(uint8_t caps);     // GM_CAP_* input capabilities, set before CmdInit (0 = legacy v1 inputs)
+	// Advertise GM_CAP_KEEPALIVE, set before CmdInit. Only enable it if you actually call
+	// CmdSendKeepAlive() while idle - see the contract at GM_CAP_KEEPALIVE. Off by default.
+	void setKeepAlive(uint8_t on);
 	// Change resolution (check https://github.com/antonioginer/switchres) with modeline.
 	// Returns 0 on success (ACK'd), -1 if not connected or the ACK never arrived after retrying.
 	int CmdSwitchres(double pClock, uint16_t hActive, uint16_t hBegin, uint16_t hEnd, uint16_t hTotal, uint16_t vActive, uint16_t vBegin, uint16_t vEnd, uint16_t vTotal, uint8_t interlace);
@@ -281,6 +291,7 @@ class GroovyMister
 	uint8_t m_nlcPack;     // 1=TILED (default), 2=RICE. Set before CmdInit
 	uint8_t m_nearLevel;   // 0-3 near-lossless quantization. Set before CmdInit
 	uint8_t m_inputCaps;   // GM_CAP_* flags sent as CMD_INIT byte[5]. Set before CmdInit
+	uint8_t m_keepAlive;   // GM_CAP_KEEPALIVE opt-in, OR'd into the caps byte at CmdInit
 	uint32_t m_preEncodedSize; // one-shot pre-encoded payload size for the next CmdBlit (0 = encode normally)
 	void buildNlcParams(void* np); // shared CmdBlit/EncodeNLC NLC parameter block (nlc_params*)
 	uint8_t  m_interlace;
