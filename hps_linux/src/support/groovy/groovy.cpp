@@ -423,7 +423,14 @@ static uint8_t doJoyInputs = 0;
 // CMD_INIT byte[5] capability flags from the client (len-6 init; 0 = older client)
 #define CAP_INPUTS_V2 0x01  // 32-bit button masks + analog triggers in the joystick packet
 #define CAP_RUMBLE    0x02  // client may send rumble messages on the inputs socket
+// Only a client that promises keepalives may be reaped on silence. Absent the bit the
+// session is left alone, which is stock Groovy's behaviour, so this is safe by default:
+// a client that never opts in can pause indefinitely. The shortest OSD idle timeout is the
+// floor such a client must beat (idleSecs below); do not add a shorter option without
+// versioning this bit.
+#define CAP_KEEPALIVE 0x04  // client sends CMD_GET_STATUS keepalives while idle
 static uint8_t clientCaps = 0;
+static uint8_t staleCmdLogged = 0;   // one [STALE_CMD] line per closed-session run
 static uint8_t doJumboFrames = 0;
 #ifdef _AF_XDP
 static uint8_t doXDPServer = 1;
@@ -1037,9 +1044,13 @@ static void setClose()
 	usingOldBlit = 0;
 	numBlit = 0;
 	blitCompression = 0;
-	free(poc);   // NOT nulled on purpose: groovy_FPGA_status() (called by loadLogo() below) dereferences
-	             // poc->PoC_interlaced, and the logo path runs with no active session. Setting poc=NULL here
-	             // caused a NULL-deref crash. Double-free is prevented by the isConnected gate on CMD_CLOSE.
+	// poc is NOT freed here. It is allocated once in groovy_map_ddr() and lives for the process.
+	// Freeing it left a dangling pointer that the logo path (loadLogo -> groovy_FPGA_status) and
+	// every late packet from a client that had not noticed the close went on dereferencing - which
+	// is how a torn-down session's frames ended up written over the logo framebuffer. Zeroing also
+	// clears PoC_bytes_len, so any stray payload takes the "no modeline" path instead of blitting.
+	memset(poc, 0, sizeof(PoC_type));
+	staleCmdLogged = 0;   // arm the one-shot stale-command log for this closed period
 	initDDR();
 	isConnected = 0;
 	isConnectedInputs = 0;
@@ -1404,7 +1415,8 @@ static void setInit(uint8_t compression, uint8_t audio_rate, uint8_t audio_chan,
 	audioRate = (audio_rate <= 3) ? audio_rate : 0;
 	audioChannels = (audio_chan <= 2) ? audio_chan : 0;
 	rgbMode = (rgb_mode <= 2) ? rgb_mode : 0;
-	poc = (PoC_type *) calloc(1, sizeof(PoC_type));
+	memset(poc, 0, sizeof(PoC_type));   // allocated once in groovy_map_ddr(), never freed (see setClose)
+	staleCmdLogged = 0;
 	initDDR();
 	isBlitting = 0;
 	usingOldBlit = 0;
@@ -2325,6 +2337,19 @@ static inline void process_packet(char *recvbufPtr, int len)
 
 		if (!isBlitting)
 		{
+			// No session: the client is never told when one ends, so after setClose() (idle timeout,
+			// or a CMD_CLOSE) it may still be streaming. Running the blit path on those packets drove
+			// the FPGA and the DDR write pointer from torn-down state. Only these three commands mean
+			// anything without a session.
+			if (!isConnected && recvbufPtr[0] != CMD_INIT && recvbufPtr[0] != CMD_GET_VERSION && recvbufPtr[0] != CMD_CLOSE)
+			{
+				if (!staleCmdLogged)
+				{
+					staleCmdLogged = 1;
+					LOG(0, "[STALE_CMD][cmd=%d len=%d][no session, ignoring until CMD_INIT]\n", recvbufPtr[0], len);
+				}
+				return;
+			}
     			switch (recvbufPtr[0])
     			{
     				case CMD_GET_VERSION:
@@ -3060,15 +3085,17 @@ void groovy_poll()
 			gotData = 1;   // XDP: leave the idle close to the once-per-poll housekeeping check (see R7)
 		}
 #endif
-		// idle timeout (mid-blit): a client that dies mid-frame leaves isCorePriority set, so this
-		// non-blocking loop would otherwise spin forever. Bail only on a no-data iteration once the
-		// deadline has passed - never during active draining or a healthy inter-chunk gap (gotData guards it).
-		if (!gotData && idleTimeoutMs && isConnected && CheckTimer(idleDeadline))
+		// Mid-blit spin escape: a client that dies part-way through a frame leaves isCorePriority
+		// set and this non-blocking loop spins hot. Abandon the partial frame and leave the loop.
+		// It deliberately does NOT close the session - doing that here is what let a merely paused
+		// client come back to a torn-down session and drive the blit path from its stale state.
+		// gotData excludes a healthy inter-chunk gap; isBlitting keeps this to the case it is for.
+		if (!gotData && isBlitting && idleTimeoutMs && isConnected && CheckTimer(idleDeadline))
 		{
-			LOG(0, "[TIMEOUT][no client activity %ums][isBlitting=%d isCorePriority=%d]\n", idleTimeoutMs, isBlitting, isCorePriority);
-			if (fp) fflush(fp);   // flush the diagnostic to disk BEFORE setClose, so it survives even if
-			                      // anything downstream misbehaves (the end-of-poll flush may never run)
-			setClose();           // setClose() clears isBlitting + isCorePriority; identical to the CMD_CLOSE path
+			LOG(0, "[BLIT_ABANDON][no client activity %ums][isBlitting=%d isCorePriority=%d]\n", idleTimeoutMs, isBlitting, isCorePriority);
+			if (fp) fflush(fp);   // flush the diagnostic before unwinding, the end-of-poll flush may not run
+			isBlitting     = 0;   // drop the incomplete frame; the session stays up
+			isCorePriority = 0;
 			break;
 		}
 	} while (isCorePriority);
@@ -3078,10 +3105,14 @@ void groovy_poll()
 		loadLogo(0);
 	}
 
-	// idle timeout (once per poll): refresh the deadline if any datagram arrived this poll, else close
-	// a session whose client has gone silent (killed/crashed/network drop). A client that is alive but
-	// not blitting keeps the session alive by sending CMD_GET_STATUS, or any other datagram.
-	// No-op when disabled (idleTimeoutMs==0) or disconnected.
+	// idle timeout (once per poll). Two separate jobs, and they are NOT gated alike:
+	//   * the deadline refresh runs for EVERY client. idleDeadline is written only here and in
+	//     setInit(), and the mid-blit escape above reads it, so a client whose deadline stops
+	//     advancing sits permanently expired and has every frame abandoned part-way through.
+	//   * the close is licensed by CAP_KEEPALIVE alone: only a client that promised keepalives
+	//     may be reaped for going quiet. GroovyMAME sends no caps byte and has no keepalive, so
+	//     it can sit paused indefinitely, which is what stock Groovy does for every client.
+	// A client that is alive but not blitting refreshes the deadline with any datagram.
 	if (isConnected && idleTimeoutMs)
 	{
 		if (sawActivity)
@@ -3089,7 +3120,7 @@ void groovy_poll()
 			idleDeadline = GetTimer(idleTimeoutMs);
 			sawActivity = 0;
 		}
-		else if (CheckTimer(idleDeadline))
+		else if ((clientCaps & CAP_KEEPALIVE) && CheckTimer(idleDeadline))
 		{
 			LOG(0, "[TIMEOUT][no client activity %ums][isBlitting=%d isCorePriority=%d][housekeeping]\n", idleTimeoutMs, isBlitting, isCorePriority);
 			if (fp) fflush(fp);
