@@ -120,8 +120,8 @@ every MiSTer core works and is nothing specific to this one.
 | CRT scale enable | Off | Horizontal size adjustment on the analog output. Not supported on interlaced modes. |
 | CRT scale factor | 0 | How much to adjust. Only shown when CRT scale is enabled. |
 | PWM | Off | PWM mode on the analog video output. Leave off unless your output board needs it. |
-| Volatile framebuffer | Off | Leave this Off. Off lets the core scan the framebuffer continuously, which is how NLC gets to the screen at all. On disables that path, and Framebuffer lead with it. |
-| Framebuffer lead | 1 | How far ahead of the beam the core reads. See [below](#framebuffer-lead). |
+| Volatile framebuffer | Off | (Off required for NLC) Off lets the core scan the framebuffer continuously, which is how NLC gets to the screen at all. On disables that path, and Framebuffer lead with it. |
+| Framebuffer lead | 1 | How far ahead of the beam the core reads. Adds latency. See [below](#framebuffer-lead). |
 | Vsync overlay | Off | Draws a vsync marker over the picture for checking sync timing. |
 | RGB mode | 888 | Greyed out. Shows the pixel format the connected client negotiated. |
 | LZ4 frames | Off | Greyed out. Shows the compression the connected client negotiated. |
@@ -154,6 +154,8 @@ every MiSTer core works and is nothing specific to this one.
 
 ### Framebuffer lead
 
+This feature is seldomly required.
+
 *OSD > Video > Debug options > Framebuffer lead*
 
 How many lines ahead of the beam the core reads the framebuffer. On NLC the decoder is still
@@ -170,6 +172,8 @@ in advance. A larger lead rides out longer memory stalls, and costs you exactly 
 Leave it at 1. Raise it one step at a time only if the picture smears under load. It is read
 when a session starts, so reconnect the emulator after changing it, and it needs Volatile
 framebuffer set to Off.
+
+Note: This feature will not resolve network bandwidth issues! 
 
 ### Controllers
 
@@ -189,9 +193,8 @@ suspends any `player_N_controller` assignment from `MiSTer.ini` until the core i
 | Symptom | Cause |
 |---|---|
 | Core sits on the logo | Nothing has connected. Check the MiSTer's IP and that the emulator is pointed at it. |
-| Session drops a few seconds after pausing | Idle timeout, which defaults to 5s. Set it to Off, or use a client that sends keepalives. |
 | No rumble or analog triggers | An older binary is installed. The client log will say `Core version 1 < 2`. Also check Joysticks is set to Analog and the pad's Rumble is On. |
-| Garbage picture, no error | The client is set to Rice compression but the core cannot decode it. Use the current release `.rbf`. |
+| Garbage picture, no error | The client is set to Rice compression but the core cannot decode it. Use the current release `.rbf` paired with the related `MiSTer_groovyNLC`. |
 | Muted, pads ignored, right after switching from Groovy | The config did not migrate. See [Upgrading from Groovy](#upgrading-from-groovy). |
 | A second emulator takes over the display | The core does not reserve a session. Run one client at a time. |
 | Picture freezes or goes black on NLC after the first frame | Volatile framebuffer is On. NLC is displayed by scanning the framebuffer, so it needs this Off. |
