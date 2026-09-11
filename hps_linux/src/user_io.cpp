@@ -1621,9 +1621,10 @@ void user_io_init(const char *path, const char *xml)
 
 			if (is_groovy())
 			{
-				// extend the RBF's 10 generic buttons to the full 12 (bits 4..15). Display
-				// labels stay generic; the OSD swaps in type-specific names per device
-				// (gctrl_apply_labels in menu.cpp). jn gives known pads positional auto-derive.
+				// extend the RBF's 10 generic buttons to the full 12 (bits 4..15). Labels stay
+				// numeric throughout, as MiSTer itself names buttons by number. jn gives known
+				// pads positional auto-derive: it re-swaps MiSTer's SNES-convention system map
+				// so position 1 is the south button, and the OSD reads the same way.
 				set_ovr_buttons((char*)"Button 1,Button 2,Button 3,Button 4,Button 5,Button 6,Button 7,Button 8,Button 9,Button 10,Button 11,Button 12", 0);
 				set_ovr_buttons((char*)"B,A,Y,X,L,R,Select,Start", 1);
 			}

@@ -1156,7 +1156,6 @@ typedef struct
 	int      trigger_l;
 	int      trigger_r;
 	int      profile;    // groovy: active map profile (0 = default, no suffix)
-	char     ctype;      // groovy: controller type ('A'rcade, 'D'ualshock, 'P'ad)
 	char     nick[17];   // groovy: user nickname (empty = auto-generated)
 	char     pnames[10][17]; // groovy: per-profile display names (empty = auto)
 	uint8_t  prumble[10]; // groovy: per-profile rumble enable (default 1)
@@ -1543,17 +1542,12 @@ static void groovy_gcfg_load(int dev)
 	input[dev].has_gcfg = 1;
 	input[dev].profile = 0;
 	input[dev].nick[0] = 0;
-	// type default by vendor: GP2040-CE -> arcade, Sony -> dualshock, Microsoft -> xbox
-	input[dev].ctype = (input[dev].vid == 0x16d0) ? 'A' : (input[dev].vid == 0x054c) ? 'D' : (input[dev].vid == 0x045e) ? 'X' : 'P';
-
 	memset(input[dev].pnames, 0, sizeof(input[dev].pnames));
 	for (int n = 0; n < 10; n++) { input[dev].prumble[n] = 1; input[dev].pinvy[n] = 0; }
 	char buf[1024] = {};
 	if (FileLoadConfig(get_gcfg_name(dev), buf, sizeof(buf) - 1) <= 0) return;
 	char *p = strstr(buf, "profile=");
 	if (p) input[dev].profile = atoi(p + 8);
-	p = strstr(buf, "type=");
-	if (p && (p[5] == 'A' || p[5] == 'D' || p[5] == 'X' || p[5] == 'P')) input[dev].ctype = p[5];
 	p = strstr(buf, "nick=");
 	if (p)
 	{
@@ -1585,7 +1579,7 @@ static void groovy_gcfg_load(int dev)
 static void groovy_gcfg_save(int dev)
 {
 	char buf[1024];
-	int len = snprintf(buf, sizeof(buf), "profile=%d\ntype=%c\nnick=%s\n", input[dev].profile, input[dev].ctype, input[dev].nick);
+	int len = snprintf(buf, sizeof(buf), "profile=%d\nnick=%s\n", input[dev].profile, input[dev].nick);
 	for (int n = 0; n < 10; n++)
 	{
 		if (len > (int)sizeof(buf) - 48) break;
@@ -1611,13 +1605,6 @@ void groovy_set_profile(int dev, int profile)
 	printf("Groovy: dev %d (%s) -> profile %d\n", dev, input[dev].idstr, input[dev].profile);
 }
 
-void groovy_set_ctype(int dev, char t)
-{
-	if (!input[dev].has_gcfg) groovy_gcfg_load(dev);
-	if (t == 'A' || t == 'D' || t == 'X' || t == 'P') input[dev].ctype = t;
-	groovy_gcfg_save(dev);
-}
-
 void groovy_set_nick(int dev, const char *nick)
 {
 	if (!input[dev].has_gcfg) groovy_gcfg_load(dev);
@@ -1626,7 +1613,6 @@ void groovy_set_nick(int dev, const char *nick)
 }
 
 int groovy_get_profile(int dev) { if (!input[dev].has_gcfg) groovy_gcfg_load(dev); return input[dev].profile; }
-char groovy_get_ctype(int dev)  { if (!input[dev].has_gcfg) groovy_gcfg_load(dev); return input[dev].ctype; }
 
 // per-profile display name (falls back to "default" / "profile N")
 char *groovy_get_pname(int dev, int prof)
@@ -1648,8 +1634,55 @@ void groovy_set_pname(int dev, int prof, const char *name)
 	groovy_gcfg_save(dev);
 }
 
+// Union of the key capability bitmaps of this device and every node bound to it, so a
+// composite pad is judged on what the whole device reports, not one of its nodes.
+static void groovy_dev_keybits(int dev, unsigned char *bits, size_t sz)
+{
+	memset(bits, 0, sz);
+	for (int i = 0; i < NUMDEV; i++)
+	{
+		if (i != dev && input[i].bind != dev) continue;
+		if (pool[i].fd <= 0) continue;
+
+		unsigned char b[(KEY_MAX + 7) / 8] = {};
+		if (ioctl(pool[i].fd, EVIOCGBIT(EV_KEY, sizeof(b)), b) < 0) continue;
+		for (size_t n = 0; n < sz && n < sizeof(b); n++) bits[n] |= b[n];
+	}
+}
+
+// jn name-derive only covers the 8 SNES-style buttons, so the four extra pad slots
+// (J1: ...,L2,R2,L3,R3 at map[12..15]) get the standard Linux gamepad codes. Skip any
+// the pad does not report: a DS4 that only advertises 0x130-0x13d would otherwise be
+// left holding BTN_THUMBR on position 12, a binding it can never send.
+static void groovy_apply_pad_defaults(int dev, uint32_t *map)
+{
+	static const uint16_t def[4] = { 0x138, 0x139, 0x13d, 0x13e }; // TL2, TR2, THUMBL, THUMBR
+	unsigned char bits[(KEY_MAX + 7) / 8];
+	groovy_dev_keybits(dev, bits, sizeof(bits));
+
+	for (int i = 0; i < 4; i++)
+	{
+		uint16_t code = def[i];
+		if (!map[12 + i] && ((bits[code / 8] >> (code % 8)) & 1)) map[12 + i] = code;
+	}
+}
+
+// True when the pad reports this button at all, so the OSD can show an absent position
+// as unavailable instead of implying it can be bound.
+int groovy_pos_available(int dev, int pos)
+{
+	static const uint16_t def[4] = { 0x138, 0x139, 0x13d, 0x13e };
+	if (pos < 8 || pos > 11) return 1;
+
+	unsigned char bits[(KEY_MAX + 7) / 8];
+	groovy_dev_keybits(dev, bits, sizeof(bits));
+	uint16_t code = def[pos - 8];
+	return (bits[code / 8] >> (code % 8)) & 1;
+}
+
 // menu-side view of the device's CURRENT-profile map: live copy when loaded, else
-// straight from the map file (does not touch device state); returns 1 if found
+// straight from the map file, else the same default the load path would derive;
+// returns 1 if any of those produced a map
 int groovy_read_map(int dev, uint32_t *out)
 {
 	if (input[dev].has_map)
@@ -1658,7 +1691,19 @@ int groovy_read_map(int dev, uint32_t *out)
 		return 1;
 	}
 	memset(out, 0, sizeof(input[dev].map));
-	return load_map(get_map_name(dev, 0), out, sizeof(input[dev].map)) ? 1 : 0;
+	if (load_map(get_map_name(dev, 0), out, sizeof(input[dev].map))) return 1;
+
+	// A profile with no saved map yet. Switching profiles clears has_map and the page
+	// redraws before any pad event reloads it, so without this the list reads as
+	// unassigned until the user happens to press something. The has_mmap flag is cleared
+	// by the same switch but the contents survive, so check those instead of the flag.
+	if (input[dev].mmap[SYS_BTN_A] || input[dev].mmap[SYS_BTN_B])
+	{
+		map_joystick(out, input[dev].mmap);
+		groovy_apply_pad_defaults(dev, out);
+		return 1;
+	}
+	return 0;
 }
 
 int groovy_get_prumble(int dev, int prof) { if (!input[dev].has_gcfg) groovy_gcfg_load(dev); if (prof < 0 || prof > 9) prof = 0; return input[dev].prumble[prof]; }
@@ -1672,11 +1717,53 @@ void groovy_set_pinvy(int dev, int prof, int v) { if (!input[dev].has_gcfg) groo
 static int groovy_cap_dev = -1;
 static int groovy_cap_pos = -1;
 static int groovy_cap_done = 0;
-void groovy_capture_begin(int dev, int pos) { groovy_cap_dev = dev; groovy_cap_pos = pos; groovy_cap_done = 0; }
+static unsigned char groovy_cap_held[(KEY_MAX + 7) / 8];
+
+void groovy_capture_begin(int dev, int pos)
+{
+	groovy_cap_dev = dev;
+	groovy_cap_pos = pos;
+	groovy_cap_done = 0;
+
+	// Arming happens on the OSD select press itself, so the button that opened this
+	// screen is still down. With the OSD up, navigation runs off the system map, so OK
+	// is mmap[SYS_BTN_A], which on a DualShock is a different physical button from
+	// position 0 - without this the opening press gets recorded as the new binding.
+	// Codes held now are ignored until released; every button stays mappable.
+	memset(groovy_cap_held, 0, sizeof(groovy_cap_held));
+	if (dev >= 0 && pool[dev].fd > 0) ioctl(pool[dev].fd, EVIOCGKEY(sizeof(groovy_cap_held)), &groovy_cap_held);
+}
 int  groovy_capture_done(void) { return groovy_cap_done; }
 void groovy_capture_cancel(void) { groovy_cap_dev = -1; groovy_cap_pos = -1; groovy_cap_done = 0; }
 
-// display nickname: stored nick, else "<TYPE>#<player>"
+// Controller type exactly as MiSTer identifies it. MiSTer defines no vendor button
+// names and has no generic Xbox or arcade type, only this quirk set, so nothing here
+// is guessed from the VID.
+const char *groovy_type_name(int dev)
+{
+	switch (input[dev].quirk)
+	{
+	case QUIRK_DS3:          return "DS3";
+	case QUIRK_DS4:
+	case QUIRK_DS4TOUCH:     return "DS4";
+	case QUIRK_WIIMOTE:      return "Wiimote";
+	case QUIRK_JOYCON:       return "Joycon";
+	case QUIRK_WHEEL:        return "Wheel";
+	case QUIRK_VCS:          return "VCS";
+	case QUIRK_JAMMA:
+	case QUIRK_JAMMA2:       return "JAMMA";
+	case QUIRK_PDSP:         return "Spinner";
+	case QUIRK_PDSP_ARCADE:  return "Arcade";
+	case QUIRK_MADCATZ360:   return "MadCatz";
+	case QUIRK_MSSP:         return "Mouse SP";
+	case QUIRK_TOUCHGUN:     return "Touchgun";
+	case QUIRK_LIGHTGUN:
+	case QUIRK_LIGHTGUN_CRT: return "Lightgun";
+	default:                 return "Gamepad";
+	}
+}
+
+// display nickname: stored nick, else "<type>#<player>"
 char *groovy_get_nick(int dev)
 {
 	static char nick[32];
@@ -1686,7 +1773,7 @@ char *groovy_get_nick(int dev)
 		snprintf(nick, sizeof(nick), "%s", input[dev].nick);
 		return nick;
 	}
-	const char *tname = (input[dev].ctype == 'A') ? "ARCADE" : (input[dev].ctype == 'D') ? "DUALSHOCK" : (input[dev].ctype == 'X') ? "XBOX" : "PAD";
+	const char *tname = groovy_type_name(dev);
 	if (input[dev].num) snprintf(nick, sizeof(nick), "%s#%d", tname, input[dev].num);
 	else snprintf(nick, sizeof(nick), "%s", tname);
 	return nick;
@@ -2770,20 +2857,37 @@ static void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int 
 
 	// groovy single-button remap: consume the next pad button press (>=256) for
 	// the device being remapped; returns early so it doesn't also navigate the OSD
-	if (groovy_cap_dev >= 0 && ev->type == EV_KEY && ev->value == 1 && ev->code >= 256)
+	if (groovy_cap_dev >= 0 && ev->type == EV_KEY && ev->code >= 256)
 	{
-		if (dev == groovy_cap_dev && groovy_cap_pos >= 0 && groovy_cap_pos < NUMBUTTONS)
+		// still down from before the capture armed: swallow it, and take the release as
+		// the signal that a later press of the same button is a deliberate assignment
+		if (dev == groovy_cap_dev && ev->code < KEY_MAX)
 		{
-			uint32_t cm[NUMBUTTONS];
-			if (!groovy_read_map(dev, cm)) memset(cm, 0, sizeof(cm));
-			cm[groovy_cap_pos] = (cm[groovy_cap_pos] & 0xFFFF0000) | (ev->code & 0xFFFF);
-			save_map(get_map_name(dev, 0), cm, sizeof(cm));
-			for (int i = 0; i < NUMDEV; i++) { input[i].has_map = 0; input[i].has_mmap = 0; }
-			groovy_cap_done = 1;
-			groovy_cap_dev = -1;
-			groovy_cap_pos = -1;
+			unsigned char *held = &groovy_cap_held[ev->code / 8];
+			unsigned char mask = 1 << (ev->code % 8);
+			if (*held & mask)
+			{
+				if (!ev->value) *held &= ~mask;
+				return;
+			}
 		}
-		return;
+
+		// only a press assigns; releases and autorepeat fall through as they did before
+		if (ev->value == 1)
+		{
+			if (dev == groovy_cap_dev && groovy_cap_pos >= 0 && groovy_cap_pos < NUMBUTTONS)
+			{
+				uint32_t cm[NUMBUTTONS];
+				if (!groovy_read_map(dev, cm)) memset(cm, 0, sizeof(cm));
+				cm[groovy_cap_pos] = (cm[groovy_cap_pos] & 0xFFFF0000) | (ev->code & 0xFFFF);
+				save_map(get_map_name(dev, 0), cm, sizeof(cm));
+				for (int i = 0; i < NUMDEV; i++) { input[i].has_map = 0; input[i].has_mmap = 0; }
+				groovy_cap_done = 1;
+				groovy_cap_dev = -1;
+				groovy_cap_pos = -1;
+			}
+			return;
+		}
 	}
 
 	if (ev->type == EV_KEY && ev->code < 256 && !(mapping && mapping_type == 2))
@@ -2919,16 +3023,7 @@ static void input_cb(struct input_event *ev, struct input_absinfo *absinfo, int 
 				{
 					// not defined try to guess the mapping
 					map_joystick(input[dev].map, input[dev].mmap);
-					if (is_groovy())
-					{
-						// jn name-derive only covers the 8 SNES-style buttons; default the
-						// PS-specific slots (J1: ...,L2,R2,L3,R3 at map[12..15]) to the
-						// standard Linux gamepad codes so full pads need no manual define
-						if (!input[dev].map[12]) input[dev].map[12] = 0x138; // BTN_TL2
-						if (!input[dev].map[13]) input[dev].map[13] = 0x139; // BTN_TR2
-						if (!input[dev].map[14]) input[dev].map[14] = 0x13d; // BTN_THUMBL
-						if (!input[dev].map[15]) input[dev].map[15] = 0x13e; // BTN_THUMBR
-					}
+					if (is_groovy()) groovy_apply_pad_defaults(dev, input[dev].map);
 				}
 				else
 				{

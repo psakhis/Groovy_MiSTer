@@ -455,10 +455,10 @@ void SelectFile(const char* path, const char* pFileExt, int Options, unsigned ch
 // accessors implemented in input.cpp
 int  groovy_player_dev(int player);
 char *groovy_get_nick(int dev);
-char groovy_get_ctype(int dev);
+const char *groovy_type_name(int dev);
+int  groovy_pos_available(int dev, int pos);
 int  groovy_get_profile(int dev);
 void groovy_set_profile(int dev, int profile);
-void groovy_set_ctype(int dev, char t);
 void groovy_set_nick(int dev, const char *nick);
 char *groovy_dev_name(int dev);
 int  get_map_dev();
@@ -481,68 +481,18 @@ static int gctrl_pos = 0;              // name-editor cursor
 static unsigned long gctrl_timer = 0;  // list live-refresh timer
 static const char gctrl_chars[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#-_";
 
-// per-type OSD label sets; positions are fixed (pos 1 = Cross = Xbox A) and the
-// wire always carries anonymous Button 1..12 (bits 4..15)
-static const char *gctrl_lbl_ds[12]   = { "Cross", "Circle", "Square", "Triangle", "L1", "R1", "Select", "Start", "L2", "R2", "L3", "R3" };
-static const char *gctrl_lbl_xbox[12] = { "A", "B", "X", "Y", "LB", "RB", "Back", "Start", "LT", "RT", "LS", "RS" };
 static char gctrl_edit_mode = 0;       // name editor target: 0 = nickname, 1 = profile name
 static char gctrl_define_return = 0;   // set when Define is launched from the Controllers page
 static int  gctrl_cap_slot = 0;        // pad position (0-11) being single-remapped
 
-static const char *gctrl_pos_label(char ctype, int pos)
-{
-	static char num[2][12];
-	static int flip = 0;
-	if (ctype == 'D') return gctrl_lbl_ds[pos];
-	if (ctype == 'X') return gctrl_lbl_xbox[pos];
-	flip ^= 1;
-	sprintf(num[flip], "Button %d", pos + 1);
-	return num[flip];
-}
-
-static void gctrl_apply_labels(char ctype)
-{
-	joy_bcount = 12;
-	for (int i = 0; i < 12; i++) strcpy(joy_bnames[i], gctrl_pos_label(ctype, i));
-}
-
-// short position label for the assignment list (generic types shrink to fit 2 cols)
-static const char *gctrl_pos_label_short(char ctype, int pos)
-{
-	static char num[2][8];
-	static int sflip = 0;
-	if (ctype == 'D') return gctrl_lbl_ds[pos];
-	if (ctype == 'X') return gctrl_lbl_xbox[pos];
-	sflip ^= 1;
-	sprintf(num[sflip], "Btn %d", pos + 1);
-	return num[sflip];
-}
-
-// compact physical-button token for the assignment list ("--" = unassigned)
-static void gctrl_btn_tok(char ctype, uint32_t mapcode, char *out)
+// Compact physical-button token for the assignment list ("--" = unassigned). MiSTer
+// names buttons by number rather than by vendor glyph - its own get_button_name_for_code()
+// renders b%d, +a%d and h%d.%d - so this stays numeric instead of inventing names.
+static void gctrl_btn_tok(uint32_t mapcode, char *out)
 {
 	uint16_t code = (uint16_t)(mapcode & 0xFFFF);
 	if (!code) { strcpy(out, "--"); return; }
-	// standard Linux gamepad button -> canonical pad position (0-11); SDL/kernel convention
-	int idx = -1;
-	switch (code)
-	{
-		case 0x130: idx = 0; break;  // BTN_SOUTH  Cross / A
-		case 0x131: idx = 1; break;  // BTN_EAST   Circle / B
-		case 0x134: idx = 2; break;  // BTN_WEST   Square / X
-		case 0x133: idx = 3; break;  // BTN_NORTH  Triangle / Y
-		case 0x136: idx = 4; break;  // BTN_TL     L1 / LB
-		case 0x137: idx = 5; break;  // BTN_TR     R1 / RB
-		case 0x13a: idx = 6; break;  // BTN_SELECT Select / Back
-		case 0x13b: idx = 7; break;  // BTN_START  Start
-		case 0x138: idx = 8; break;  // BTN_TL2    L2 / LT
-		case 0x139: idx = 9; break;  // BTN_TR2    R2 / RT
-		case 0x13d: idx = 10; break; // BTN_THUMBL L3 / LS
-		case 0x13e: idx = 11; break; // BTN_THUMBR R3 / RS
-	}
-	// speak the controller's language for known gamepad buttons; else a plain number
-	if (idx >= 0 && (ctype == 'D' || ctype == 'X')) snprintf(out, 8, "%s", gctrl_pos_label_short(ctype, idx));
-	else if (code >= 0x130 && code <= 0x13f) sprintf(out, "b%d", code - 0x12F);
+	if (code >= 0x130 && code <= 0x13f) sprintf(out, "b%d", code - 0x12F);
 	else if (code >= 0x120 && code <= 0x12f) sprintf(out, "b%d", code - 0x11F);
 	else if (code >= 0x100 && code <= 0x11f) sprintf(out, "b%d", code - 0xFF);
 	else if (code < 256) strcpy(out, "KEY");
@@ -2726,14 +2676,13 @@ void HandleUI(void)
 			menustate = MENU_GROOVYDEV2;
 			parentstate = MENU_GROOVYDEV1;
 			gctrl_timer = GetTimer(500);
-			menumask = 0x1FF; // 0-7 settings + Exit(8)
-			char ct = groovy_get_ctype(gctrl_dev);
+			menumask = 0x1FD; // 0-7 settings + Exit(8); bit 1 (Type) is display-only
 			int prof = groovy_get_profile(gctrl_dev);
 			int n = 0;
 			sprintf(s, " Name:    %s", groovy_get_nick(gctrl_dev));
 			MenuWrite(n++, s, menusub == 0, 0);
-			sprintf(s, " Type:    %s", (ct == 'A') ? "Arcade stick" : (ct == 'D') ? "DualShock" : (ct == 'X') ? "Xbox pad" : "Gamepad");
-			MenuWrite(n++, s, menusub == 1, 0);
+			sprintf(s, " Type:    %s", groovy_type_name(gctrl_dev));
+			MenuWrite(n++, s, 0, 1);
 			sprintf(s, " Profile: %d <%s>", prof, groovy_get_pname(gctrl_dev, prof));
 			MenuWrite(n++, s, menusub == 2, 0);
 			MenuWrite(n++, " Rename profile...", menusub == 3, 0);
@@ -2777,13 +2726,6 @@ void HandleUI(void)
 			menustate = MENU_GROOVYNICK1;
 			break;
 		}
-		if ((select || left || right) && menusub == 1)
-		{
-			char ct = groovy_get_ctype(gctrl_dev);
-			groovy_set_ctype(gctrl_dev, left ? ((ct == 'A') ? 'P' : (ct == 'D') ? 'A' : (ct == 'X') ? 'D' : 'X') : ((ct == 'A') ? 'D' : (ct == 'D') ? 'X' : (ct == 'X') ? 'P' : 'A'));
-			menustate = MENU_GROOVYDEV1;
-			break;
-		}
 		if ((select || left || right) && menusub == 2)
 		{
 			int p = groovy_get_profile(gctrl_dev);
@@ -2824,7 +2766,6 @@ void HandleUI(void)
 		}
 		if (select && menusub == 7)
 		{
-			gctrl_apply_labels(groovy_get_ctype(gctrl_dev));
 			gctrl_define_return = 1;
 			start_map_setting(joy_bcount ? joy_bcount + 4 : 8);
 			menustate = MENU_JOYDIGMAP;
@@ -2849,7 +2790,6 @@ void HandleUI(void)
 			parentstate = MENU_GROOVYBTNS1;
 			gctrl_timer = GetTimer(500);
 			menumask = 0x1FFF; // 12 buttons (0-11) + Exit(12)
-			char ct = groovy_get_ctype(gctrl_dev);
 			int prof = groovy_get_profile(gctrl_dev);
 			uint32_t gmap[32];
 			int have = groovy_read_map(gctrl_dev, gmap);
@@ -2857,9 +2797,12 @@ void HandleUI(void)
 			for (int b = 0; b < 12; b++)
 			{
 				char tok[8];
-				gctrl_btn_tok(ct, have ? gmap[4 + b] : 0, tok);
+				// a position the pad never reports cannot be bound, so show it as such
+				int avail = groovy_pos_available(gctrl_dev, b);
+				if (avail) gctrl_btn_tok(have ? gmap[4 + b] : 0, tok);
+				else { strcpy(tok, "n/a"); menumask &= ~(1 << b); }
 				sprintf(s, " Button %-2d = %-6.6s", b + 1, tok);
-				MenuWrite(n++, s, menusub == (uint32_t)b, 0);
+				MenuWrite(n++, s, menusub == (uint32_t)b, !avail);
 			}
 			MenuWrite(n++);
 			sprintf(s, " Sticks: L+R  Y-inv:%s", groovy_get_pinvy(gctrl_dev, prof) ? "On" : "Off");
@@ -4322,12 +4265,6 @@ void HandleUI(void)
 			}
 
 			if (is_menu() && !get_map_button()) OsdWrite(7);
-
-			// groovy: switch prompt labels to the mapped device's type once it's known
-			if (is_groovy() && !is_menu() && get_map_type() == 1 && get_map_dev() >= 0)
-			{
-				gctrl_apply_labels(groovy_get_ctype(get_map_dev()));
-			}
 
 			const char* p = 0;
 			if (get_map_button() < 0)
